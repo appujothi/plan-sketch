@@ -469,8 +469,14 @@ var sheetKind = null;     // what the bottom sheet is showing, so it can be refr
 function lines(){ return PROJ ? PROJ.lines : []; }
 function ops(){ return PROJ ? PROJ.ops : []; }
 function nid(p){ return p + (PROJ.seq++); }
+/* WHAT UNDO CARRIES MUST BE WHAT THE APP CHANGES. The setback is project state he edits and
+   it was not in here: he would change it, dislike it, press undo - and a wall drawn five
+   minutes ago would vanish while the setback stayed exactly as he had just set it. An undo
+   that does something other than what he last did is worse than no undo.
+   `refHidden` is DELIBERATELY not here. It is a view toggle, not drawing state; carried in
+   the snapshot, an unrelated undo would hide reference lines he never asked to hide. */
 function snapshot(){
-  return JSON.stringify({ lines: PROJ.lines, ops: PROJ.ops, labels: labels() });
+  return JSON.stringify({ lines: PROJ.lines, ops: PROJ.ops, labels: labels(), sb: sb() });
 }
 function pushState(str){
   undoStack.push(str);
@@ -482,8 +488,11 @@ function undo(){
   if (!undoStack.length) return;
   var s = JSON.parse(undoStack.pop());
   PROJ.lines = s.lines; PROJ.ops = s.ops; PROJ.labels = s.labels || [];
+  if (s.sb) PROJ.sb = s.sb;
   sel = []; chain = null; ghost = null; justDrawn = null;
   document.getElementById("undo").disabled = !undoStack.length;
+  var ps = document.getElementById("psize");
+  if (ps) ps.textContent = sizeText();
   closeSheet(); draw(); save();
 }
 
@@ -1839,6 +1848,7 @@ function openProjects(){
         ers.textContent = "Those setbacks leave nothing to build on.";
         return;
       }
+      push();                       // so that undo puts the old setback back, not a wall
       PROJ.sb = v; save();
       document.getElementById("psize").textContent = sizeText();
       openProjects(); draw();
