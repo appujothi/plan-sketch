@@ -191,12 +191,21 @@ function inchText(t){ return (t === 4.5 ? "4½" : String(t)) + '"'; }
    DECIMAL FEET ARE REFUSED. Someone who types 10.3 almost always means 10'-3", and reading it
    as 10.3 feet gives 10'-3 1/2" - a number he never said, on screen and in the record, with
    nothing to show the two had parted. Inches of 12 or more are refused for the same reason. */
+/* WHAT THE APP PRINTS, THE APP MUST BE ABLE TO READ. It printed 12'-5¼" on the drawing and
+   then refused that very string when he typed it back - every figure it has ever shown,
+   since the first version, because the separator it writes ('-) was not one of the ones it
+   accepted, and later because it writes quarters it could not read. Reading a size off your
+   own drawing and typing it in is the most ordinary thing in the world, and it was the one
+   thing this could not do. */
 function parseFt(s){
-  s = String(s).trim().replace(/[’′]/g, "'").replace(/[”″]/g, '"');
+  s = String(s).trim().replace(/[’′]/g, "'").replace(/[”″]/g, '"')
+       .replace(/¼/g, ".25").replace(/½/g, ".5").replace(/¾/g, ".75");
   if (!s) return null;
-  var m = s.match(/^(\d+(?:\.5)?)\s*"$/);                   // 126"  126.5"
+  var QTR = "(?:\\.25|\\.5|\\.75)?";
+  var m = s.match(new RegExp('^(\\d+' + QTR + ')\\s*"$'));            // 126"  126.5"  126.25"
   if (m) return parseFloat(m[1]);
-  m = s.match(/^(\d+)\s*(?:'|-|\s)\s*(\d+(?:\.5)?)\s*"?$/); // 10-6, 10'6", 10 6, 5-3.5
+  // 10-6, 10'6", 10 6, 5-3.5, and the app's own 12'-5¼"
+  m = s.match(new RegExp("^(\\d+)[\\s'\\-]+(\\d+" + QTR + ')\\s*"?$'));
   if (m){
     var inch = parseFloat(m[2]);
     return inch >= 12 ? null : parseInt(m[1],10)*12 + inch;
@@ -208,7 +217,7 @@ function parseFt(s){
 function whyNot(s){
   s = String(s).trim();
   if (/^\d+\.\d+\s*'?$/.test(s)) return "Feet and inches, not decimal feet — 10'-3\" is typed 10-3.";
-  if (/^\d+\s*(?:'|-|\s)\s*\d/.test(s)) return "Inches must be under 12, in halves — 11'-3\" is typed 11-3.";
+  if (/^\d+[\s'\-]+\d/.test(s)) return "Inches must be under 12, in quarters — 11'-3\" is typed 11-3.";
   return "Could not read that size — try 10, or 10-6.";
 }
 /* QUARTERS, not halves. Every line lands on a half inch, so a LENGTH never needs a quarter.
