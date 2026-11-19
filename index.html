@@ -338,8 +338,21 @@ function rect(){ return svg.getBoundingClientRect(); }
 function perInch(){ return rect().width / view.w; }     // screen px per model inch
 function px(n){ return n / perInch(); }                 // screen px -> model inches
 
+/* Both of these divide by the size of the drawing area, and until the browser has laid the
+   page out that size is ZERO. Dividing by it puts NaN into the view, and NaN reaches the
+   screen as a viewBox the browser refuses - a blank page with an error in a console he will
+   never open. It showed up only once the page was served from a real address, because the
+   pane opened fresh there and the first draw beat the layout. Waiting for a size is the fix;
+   guessing one would just be a different wrong number. */
+function laidOut(){ var r = rect(); return r.width > 0 && r.height > 0; }
+var fitTries = 0;
 function fit(){
   if (!PROJ) return;
+  if (!laidOut()){                      // pane still opening, or the tab is not showing yet
+    if (fitTries++ < 90) requestAnimationFrame(fit);
+    return;
+  }
+  fitTries = 0;
   touched = false;
   var r = rect(), m = Math.max(PROJ.W, PROJ.H) * 0.08 + 12;
   var w = PROJ.W + 2*m, h = PROJ.H + 2*m;
@@ -348,8 +361,12 @@ function fit(){
   draw();
 }
 function syncView(){
+  if (!laidOut()) return;
   var r = rect();
   view.h = view.w * r.height / r.width;
+}
+function viewOk(){
+  return isFinite(view.x) && isFinite(view.y) && view.w > 0 && isFinite(view.w) && view.h > 0 && isFinite(view.h);
 }
 function toModel(cx, cy){
   var r = rect();
@@ -368,6 +385,7 @@ function draw(){
   while (svg.firstChild) svg.removeChild(svg.firstChild);
   if (!PROJ) return;
   syncView();
+  if (!viewOk()){ fit(); return; }     // a view with no numbers in it: work one out and come back
   svg.setAttribute("viewBox", view.x + " " + view.y + " " + view.w + " " + view.h);
   var thin = px(1), fs = px(11), cs = getComputedStyle(document.body);
   var bg = cs.getPropertyValue("--bg").trim() || "#fff";
