@@ -1,0 +1,1023 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17150f" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sketch">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="data:application/manifest+json,{"name":"Plan Sketch","short_name":"Sketch","display":"standalone","orientation":"any","background_color":"%23f6f4ef","theme_color":"%23f6f4ef","start_url":"./app.html","icons":[]}">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%238a5a2b'/%3E%3Cg stroke='%23fffdf8' stroke-width='5' fill='none'%3E%3Cpath d='M14 50 L14 16 L50 16'/%3E%3Cpath d='M14 34 L40 34'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%238a5a2b'/%3E%3Cg stroke='%23fffdf8' stroke-width='5' fill='none'%3E%3Cpath d='M14 50 L14 16 L50 16'/%3E%3Cpath d='M14 34 L40 34'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  html,body{ margin:0; padding:0; }
+  body{ padding:env(safe-area-inset-top) env(safe-area-inset-right)
+                env(safe-area-inset-bottom) env(safe-area-inset-left); }
+</style>
+</head>
+<body>
+<script>if (typeof window.claude === "undefined") window.claude = { use: function(){ return Promise.resolve(null); } };</script>
+<title>Plan Sketch</title>
+<style>
+:root{
+  --bg:#f6f4ef; --panel:#fffdf8; --ink:#241f1a; --mut:#7c7066; --line:#ddd5c8;
+  --accent:#8a5a2b; --sel:#c0471f; --wall:#3a332c; --ref:#2f6ea8; --sheet:#fffdf8;
+  --grid:#e5ded1; --lock:#9a8f80;
+}
+:root:not([data-theme="light"]){ @media (prefers-color-scheme:dark){
+  :root{ --bg:#17150f; --panel:#201d16; --ink:#efe8dc; --mut:#9d9185; --line:#38322a;
+         --accent:#d79a5b; --sel:#ff8a5c; --wall:#cdc3b4; --ref:#6fb0e6; --sheet:#201d16;
+         --grid:#2a251e; --lock:#6d6458; }
+}}
+:root[data-theme="dark"]{
+  --bg:#17150f; --panel:#201d16; --ink:#efe8dc; --mut:#9d9185; --line:#38322a;
+  --accent:#d79a5b; --sel:#ff8a5c; --wall:#cdc3b4; --ref:#6fb0e6; --sheet:#201d16;
+  --grid:#2a251e; --lock:#6d6458;
+}
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body{ margin:0; height:100%; overflow:hidden; }
+body{ background:var(--bg); color:var(--ink); font:15px/1.4 ui-sans-serif,system-ui,"Segoe UI",sans-serif;
+      display:flex; flex-direction:column; touch-action:none; }
+header{ display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line);
+        background:var(--panel); }
+header b{ font-size:15px; font-weight:650; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+header .sub{ color:var(--mut); font-size:12px; white-space:nowrap; }
+.spacer{ flex:1; }
+button{ font:inherit; color:inherit; background:var(--panel); border:1px solid var(--line);
+        border-radius:9px; padding:7px 11px; cursor:pointer; }
+button:active{ transform:translateY(1px); }
+button[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+button.ghost{ background:transparent; }
+button:disabled{ opacity:.4; }
+#warn{ display:none; padding:9px 12px; background:var(--sel); color:#fff; font-size:13px; line-height:1.35; }
+#warn.on{ display:block; }
+#tools{ display:flex; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line);
+        background:var(--panel); overflow-x:auto; }
+#tools button{ flex:0 0 auto; }
+#opts{ display:flex; gap:6px; padding:6px 10px; border-bottom:1px solid var(--line);
+       background:var(--panel); overflow-x:auto; align-items:center; }
+#opts button{ flex:0 0 auto; padding:5px 9px; font-size:13px; }
+#opts .lbl{ color:var(--mut); font-size:12px; flex:0 0 auto; margin-right:2px; }
+.sw{ width:24px; height:24px; border-radius:50%; border:2px solid var(--line); padding:0; flex:0 0 auto; }
+.sw[aria-pressed="true"]{ border-color:var(--ink); }
+#stage{ flex:1; position:relative; min-height:0; }
+svg{ width:100%; height:100%; display:block; touch-action:none; }
+#hint{ position:absolute; left:10px; right:10px; bottom:10px; text-align:center; color:var(--mut);
+       font-size:12.5px; pointer-events:none; }
+#sheet{ position:absolute; left:0; right:0; bottom:0; background:var(--sheet); border-top:1px solid var(--line);
+        padding:12px 14px 16px; display:none; box-shadow:0 -8px 24px rgba(0,0,0,.14); }
+#sheet.on{ display:block; }
+#sheet h3{ margin:0 0 8px; font-size:14px; font-weight:650; }
+.row{ display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
+input[type=text]{ font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line);
+                  border-radius:9px; padding:8px 10px; width:7.5em; }
+.err{ color:var(--sel); font-size:12.5px; }
+.note{ color:var(--mut); font-size:12.5px; }
+#len{ position:absolute; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+      padding:6px; display:none; gap:5px; align-items:center; left:10px; bottom:10px; }
+#len.on{ display:flex; }
+#len input{ width:5.5em; padding:6px 8px; }
+#len button{ padding:6px 9px; font-size:14px; }
+</style>
+
+<header>
+  <b id="pname">—</b>
+  <span class="sub" id="psize"></span>
+  <span class="spacer"></span>
+  <button class="ghost" id="undo" title="Undo">↶</button>
+  <button class="ghost" id="menu">Projects</button>
+</header>
+
+<div id="warn"></div>
+
+<div id="tools">
+  <button id="t-draw" data-mode="draw" aria-pressed="true">Draw</button>
+  <button id="t-select" data-mode="select" aria-pressed="false">Select</button>
+  <button id="t-trim" data-mode="trim" aria-pressed="false">Erase</button>
+  <button id="t-pan" data-mode="pan" aria-pressed="false">Pan</button>
+  <span class="spacer"></span>
+  <button id="ortho" aria-pressed="true" title="Lock every line to 90 degrees">90&deg;</button>
+  <button id="fit" class="ghost">Fit</button>
+</div>
+
+<div id="opts"></div>
+
+<div id="stage">
+  <svg id="plan" xmlns="http://www.w3.org/2000/svg"></svg>
+  <div id="hint"></div>
+  <div id="len">
+    <input type="text" id="lenv" inputmode="text" placeholder="10-6">
+    <button data-dir="u">↑</button><button data-dir="r">→</button>
+    <button data-dir="d">↓</button><button data-dir="l">←</button>
+  </div>
+  <div id="sheet"></div>
+</div>
+
+<script>
+"use strict";
+
+/* ============================================================================
+   A common plan sketchpad. One app, many projects.
+
+   The model is a LIST OF LINES, not a subdivision of a rectangle. A line is a
+   real object: it has a thickness, a kind (wall or reference), a colour and a
+   lock. That is what lets a wall be drawn anywhere, trimmed at a crossing, or
+   deleted whole - none of which a rectangle-splitting model can do.
+
+   What that costs, said plainly: nothing here guarantees that the lines close
+   into rooms. A subdivision model could not produce an open room; this one can.
+   Areas are therefore NOT computed. Length, thickness and position are.
+
+   Everything is in INCHES and lands on a half inch. Feet-inches is the only
+   way a size is typed or shown.
+   ========================================================================== */
+
+var GRID   = 0.5;          // every coordinate lands here
+var MINLEN = 3;            // inches: shorter than this is not a line
+var THICK  = [4.5, 6, 9];  // the thicknesses a wall may be drawn at
+var COLORS = ["#3a332c", "#2f6ea8", "#1d7a4f", "#b4420f", "#7a3fa0", "#9a8f80"];
+
+function inchText(t){ return (t === 4.5 ? "4½" : String(t)) + '"'; }
+
+/* ---- feet-inches TYPED IN. "10" = 10'-0", "10-6"/"10 6"/"10'6" = 10'-6", "126\"" = inches.
+   DECIMAL FEET ARE REFUSED. Someone who types 10.3 almost always means 10'-3", and reading it
+   as 10.3 feet gives 10'-3 1/2" - a number he never said, on screen and in the record, with
+   nothing to show the two had parted. Inches of 12 or more are refused for the same reason. */
+function parseFt(s){
+  s = String(s).trim().replace(/[’′]/g, "'").replace(/[”″]/g, '"');
+  if (!s) return null;
+  var m = s.match(/^(\d+(?:\.5)?)\s*"$/);                   // 126"  126.5"
+  if (m) return parseFloat(m[1]);
+  m = s.match(/^(\d+)\s*(?:'|-|\s)\s*(\d+(?:\.5)?)\s*"?$/); // 10-6, 10'6", 10 6, 5-3.5
+  if (m){
+    var inch = parseFloat(m[2]);
+    return inch >= 12 ? null : parseInt(m[1],10)*12 + inch;
+  }
+  m = s.match(/^(\d+)\s*'?$/);                              // 10 -> whole feet
+  if (m) return parseInt(m[1],10)*12;
+  return null;
+}
+function whyNot(s){
+  s = String(s).trim();
+  if (/^\d+\.\d+\s*'?$/.test(s)) return "Feet and inches, not decimal feet — 10'-3\" is typed 10-3.";
+  if (/^\d+\s*(?:'|-|\s)\s*\d/.test(s)) return "Inches must be under 12, in halves — 11'-3\" is typed 11-3.";
+  return "Could not read that size — try 10, or 10-6.";
+}
+function fmt(v){
+  var n = Math.round(v*2)/2, neg = n<0; n = Math.abs(n);
+  var f = Math.floor(n/12), i = n - f*12, h = "";
+  if (i >= 11.75){ f += 1; i = 0; }
+  if (Math.abs(i - Math.round(i)) > 0.01){ i = Math.floor(i); h = "½"; }
+  else i = Math.round(i);
+  return (neg?"-":"") + f + "'-" + i + h + '"';
+}
+function snap(v){ return Math.round(v / GRID) * GRID; }
+
+/* ---------------------------------------------------------------- geometry */
+function len(l){ return Math.sqrt((l.x2-l.x1)*(l.x2-l.x1) + (l.y2-l.y1)*(l.y2-l.y1)); }
+
+// Where do two segments cross? Parameters along each, or null. Parallel lines
+// never cross here - two walls lying on each other have no single crossing, and
+// inventing one is how a trim eats a wall it was never near.
+function segInt(a, b){
+  var r1 = a.x2-a.x1, r2 = a.y2-a.y1, s1 = b.x2-b.x1, s2 = b.y2-b.y1;
+  var d = r1*s2 - r2*s1;
+  if (Math.abs(d) < 1e-9) return null;
+  var t = ((b.x1-a.x1)*s2 - (b.y1-a.y1)*s1) / d;
+  var u = ((b.x1-a.x1)*r2 - (b.y1-a.y1)*r1) / d;
+  if (t < 1e-9 || t > 1-1e-9 || u < -1e-9 || u > 1+1e-9) return null;
+  return { t:t, u:u };
+}
+// How far along a line does a point fall, and how far off it?
+function project(l, px, py){
+  var dx = l.x2-l.x1, dy = l.y2-l.y1, L2 = dx*dx + dy*dy;
+  if (L2 < 1e-12) return { t:0, d:Math.sqrt((px-l.x1)*(px-l.x1)+(py-l.y1)*(py-l.y1)) };
+  var t = ((px-l.x1)*dx + (py-l.y1)*dy) / L2;
+  var c = Math.max(0, Math.min(1, t));
+  var qx = l.x1 + c*dx, qy = l.y1 + c*dy;
+  return { t:t, d:Math.sqrt((px-qx)*(px-qx)+(py-qy)*(py-qy)) };
+}
+function at(l, t){ return { x:l.x1 + (l.x2-l.x1)*t, y:l.y1 + (l.y2-l.y1)*t }; }
+
+// Every place OTHER lines cut this one, as parameters along it, 0 and 1 included.
+function cutsOf(l, all){
+  var cs = [0, 1];
+  all.forEach(function(o){
+    if (o.id === l.id) return;
+    var i = segInt(l, o);
+    if (i) cs.push(i.t);
+  });
+  cs.sort(function(p,q){ return p-q; });
+  return cs;
+}
+
+/* TRIM. He tapped a point on this line. Find the stretch of it between the two
+   nearest crossings and take THAT away, leaving whatever is on either side.
+   A line nothing crosses has no stretch to take, so the whole line goes - which
+   is the same thing said at the only scale available.
+   Returns the pieces that survive (0, 1 or 2 of them). */
+function trimAt(l, t0, all){
+  var cs = cutsOf(l, all), lo = 0, hi = 1, L = len(l);
+  for (var i = 0; i < cs.length-1; i++){
+    if (t0 >= cs[i] - 1e-9 && t0 <= cs[i+1] + 1e-9){ lo = cs[i]; hi = cs[i+1]; break; }
+  }
+  if (hi - lo > 1 - 1e-9) return [];                 // nothing crosses it: all of it goes
+  var out = [];
+  if (lo * L >= MINLEN){ var a = at(l, lo); out.push({ x1:l.x1, y1:l.y1, x2:a.x, y2:a.y }); }
+  if ((1-hi) * L >= MINLEN){ var b = at(l, hi); out.push({ x1:b.x, y1:b.y, x2:l.x2, y2:l.y2 }); }
+  return out;
+}
+
+/* ---------------------------------------------------------------- the state */
+var PROJ = null;                     // the open project
+var mode = "draw", thick = 4.5, kind = "wall", color = COLORS[0], ortho = true;
+var chain = null, ghost = null, sel = null, undoStack = [];
+var view = { x:0, y:0, w:100, h:100 };
+var db = null, saveTimer = 0;
+var INVENTED = null;      // the empty project made for a first visit, droppable if the store has real ones
+var sheetKind = null;     // what the bottom sheet is showing, so it can be refreshed in place
+
+function lines(){ return PROJ ? PROJ.lines : []; }
+function ops(){ return PROJ ? PROJ.ops : []; }
+function nid(p){ return p + (PROJ.seq++); }
+function snapshot(){
+  return JSON.stringify({ lines: PROJ.lines, ops: PROJ.ops });
+}
+function push(){
+  undoStack.push(snapshot());
+  if (undoStack.length > 80) undoStack.shift();
+  document.getElementById("undo").disabled = false;
+}
+function undo(){
+  if (!undoStack.length) return;
+  var s = JSON.parse(undoStack.pop());
+  PROJ.lines = s.lines; PROJ.ops = s.ops; sel = null; chain = null; ghost = null;
+  document.getElementById("undo").disabled = !undoStack.length;
+  closeSheet(); draw(); save();
+}
+
+/* ------------------------------------------------------------- the projects */
+var LSK = "plansketch.v1";
+// ONE copy of the list, held here. localStorage is where it is kept BETWEEN visits, not
+// where it is kept during one: a browser that refuses storage (private window, blocked
+// site data) must still draw. Reading it back on every call made the app lose the project
+// it had just created the moment storage threw.
+var STATE = (function(){
+  try { var s = JSON.parse(localStorage.getItem(LSK)); if (s && s.list) return s; } catch (e){}
+  return { list:[], open:null };
+})();
+function store(){ return STATE; }
+/* This refuses to crash when storage refuses the write - losing the drawing on screen because
+   the browser would not keep a copy of it would be the worse outcome. What it must not do is
+   CONCEAL the refusal. The probe below runs once at load, with a one-byte key; a browser that
+   takes one byte at nine in the morning can still refuse 200 KB of walls at noon - quota
+   filled, storage revoked, private mode allowing the small write and not the large one. So
+   every write reports what happened and the strip appears the moment saving stops, not only
+   when it was impossible from the start. It goes away again if a later write succeeds. */
+function writeStore(s){
+  STATE = s;
+  var ok;
+  try { localStorage.setItem(LSK, JSON.stringify(s)); ok = true; }
+  catch (e){ ok = false; }
+  if (ok !== CAN_SAVE){ CAN_SAVE = ok; paintSaveWarning(); }
+}
+
+/* Can this copy of the page actually keep anything? Opened straight off a phone's downloads
+   the answer is often no - some browsers give a file:// page no storage at all, and the
+   writes above swallow their own failure by design, so the app would look like it was saving
+   and lose the lot on close. Ask once, by writing a probe and reading it back: a write that
+   does not throw is not the same as a write that stays.
+
+   A warning in a chat message is read once and forgotten. This one is on the page, every
+   time, until the answer changes. */
+var CAN_SAVE = (function(){
+  try {
+    localStorage.setItem(LSK + ".probe", "1");
+    var ok = localStorage.getItem(LSK + ".probe") === "1";
+    localStorage.removeItem(LSK + ".probe");
+    return ok;
+  } catch (e){ return false; }
+})();
+function paintSaveWarning(){
+  var w = document.getElementById("warn");
+  if (!w) return;
+  var ok = CAN_SAVE || !!db;                 // either the browser keeps it, or the store does
+  w.classList.toggle("on", !ok);
+  w.textContent = ok ? "" :
+    "Nothing here is being saved. Close this page and the drawing is gone. " +
+    "Open it from the Claude link, or from a web address, to keep your work.";
+}
+
+function newProject(name, W, H){
+  return { id:"p"+Date.now(), name:name, W:W, H:H, north:"up", lines:[], ops:[], seq:1 };
+}
+function save(){
+  if (!PROJ) return;
+  var s = store(), i = -1;
+  s.list.forEach(function(p, k){ if (p.id === PROJ.id) i = k; });
+  if (i < 0) s.list.push(PROJ); else s.list[i] = PROJ;
+  s.open = PROJ.id;
+  writeStore(s);
+  // the browser holds it; the artifact store is a copy, and a copy that fails
+  // must not take the drawing with it.
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){
+    if (!db) return;
+    db.doc("projects/" + PROJ.id).set(JSON.parse(JSON.stringify(PROJ))).catch(function(){});
+  }, 900);
+}
+
+/* ------------------------------------------------------------------ drawing */
+var svg = document.getElementById("plan"), NS = "http://www.w3.org/2000/svg";
+function el(n, a){ var e = document.createElementNS(NS, n); for (var k in a) e.setAttribute(k, a[k]); return e; }
+function rect(){ return svg.getBoundingClientRect(); }
+function perInch(){ return rect().width / view.w; }     // screen px per model inch
+function px(n){ return n / perInch(); }                 // screen px -> model inches
+
+function fit(){
+  if (!PROJ) return;
+  touched = false;
+  var r = rect(), m = Math.max(PROJ.W, PROJ.H) * 0.08 + 12;
+  var w = PROJ.W + 2*m, h = PROJ.H + 2*m;
+  if (w / h < r.width / r.height) w = h * r.width / r.height; else h = w * r.height / r.width;
+  view = { x:(PROJ.W - w)/2, y:(PROJ.H - h)/2, w:w, h:h };
+  draw();
+}
+function syncView(){
+  var r = rect();
+  view.h = view.w * r.height / r.width;
+}
+function toModel(cx, cy){
+  var r = rect();
+  return { x: view.x + (cx - r.left)/r.width * view.w,
+           y: view.y + (cy - r.top)/r.height * view.h };
+}
+
+function opSpans(l){                       // openings on this line, as {a,b} inches from start
+  var L = len(l);
+  return ops().filter(function(o){ return o.line === l.id; }).map(function(o){
+    return { o:o, a:Math.max(0, o.at), b:Math.min(L, o.at + o.w) };
+  });
+}
+
+function draw(){
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  if (!PROJ) return;
+  syncView();
+  svg.setAttribute("viewBox", view.x + " " + view.y + " " + view.w + " " + view.h);
+  var thin = px(1), fs = px(11), cs = getComputedStyle(document.body);
+  var bg = cs.getPropertyValue("--bg").trim() || "#fff";
+
+  // the plot
+  svg.appendChild(el("rect", { x:0, y:0, width:PROJ.W, height:PROJ.H, fill:"none",
+    stroke:cs.getPropertyValue("--grid").trim(), "stroke-width":px(1.5), "stroke-dasharray":px(7)+" "+px(5) }));
+
+  // reference lines first, under the walls
+  lines().forEach(function(l){
+    if (l.kind !== "ref") return;
+    svg.appendChild(el("line", { x1:l.x1, y1:l.y1, x2:l.x2, y2:l.y2, stroke:l.color,
+      "stroke-width":px(1.4), "stroke-dasharray":px(9)+" "+px(5), "stroke-linecap":"butt" }));
+  });
+
+  // wall bands, at the thickness they really are
+  lines().forEach(function(l){
+    if (l.kind !== "wall") return;
+    svg.appendChild(el("line", { x1:l.x1, y1:l.y1, x2:l.x2, y2:l.y2, stroke:l.color,
+      "stroke-width":l.t, "stroke-linecap":"butt" }));
+  });
+
+  // openings: cut the band away, then the symbol
+  lines().forEach(function(l){
+    if (l.kind !== "wall") return;
+    var L = len(l), ux = (l.x2-l.x1)/L, uy = (l.y2-l.y1)/L, nx = -uy, ny = ux;
+    opSpans(l).forEach(function(s){
+      var A = { x:l.x1 + ux*s.a, y:l.y1 + uy*s.a }, B = { x:l.x1 + ux*s.b, y:l.y1 + uy*s.b };
+      svg.appendChild(el("line", { x1:A.x, y1:A.y, x2:B.x, y2:B.y, stroke:bg,
+        "stroke-width":l.t + 0.2, "stroke-linecap":"butt" }));
+      [A, B].forEach(function(P){                               // the jambs
+        svg.appendChild(el("line", { x1:P.x - nx*l.t/2, y1:P.y - ny*l.t/2,
+          x2:P.x + nx*l.t/2, y2:P.y + ny*l.t/2, stroke:l.color, "stroke-width":thin }));
+      });
+      var wd = s.b - s.a;
+      if (s.o.kind === "door"){
+        svg.appendChild(el("path", { d:"M " + A.x + " " + A.y + " L " + (A.x + nx*wd) + " " + (A.y + ny*wd) +
+          " A " + wd + " " + wd + " 0 0 1 " + B.x + " " + B.y, fill:"none", stroke:l.color,
+          "stroke-width":thin, opacity:"0.85" }));
+      } else {
+        svg.appendChild(el("line", { x1:A.x, y1:A.y, x2:B.x, y2:B.y, stroke:l.color, "stroke-width":thin }));
+      }
+      var M = { x:(A.x+B.x)/2 + nx*(l.t/2 + fs*0.9), y:(A.y+B.y)/2 + ny*(l.t/2 + fs*0.9) };
+      var tx = el("text", { x:M.x, y:M.y, "font-size":fs, fill:cs.getPropertyValue("--mut").trim(),
+        "text-anchor":"middle", "dominant-baseline":"middle" });
+      tx.textContent = (s.o.kind === "door" ? "D " : "W ") + fmt(wd);
+      svg.appendChild(tx);
+    });
+  });
+
+  // locks
+  lines().forEach(function(l){
+    if (!l.locked) return;
+    var m = at(l, 0.5);
+    var c = el("circle", { cx:m.x, cy:m.y, r:px(5), fill:cs.getPropertyValue("--lock").trim(), opacity:"0.9" });
+    svg.appendChild(c);
+  });
+
+  // the selected line, lit up with its size on it
+  if (sel){
+    var l = byId(sel);
+    if (l){
+      svg.appendChild(el("line", { x1:l.x1, y1:l.y1, x2:l.x2, y2:l.y2,
+        stroke:cs.getPropertyValue("--sel").trim(), "stroke-width":Math.max(l.kind==="wall"?l.t:0, px(3)) + px(3),
+        opacity:"0.35", "stroke-linecap":"butt" }));
+      var m2 = at(l, 0.5), L2 = len(l);
+      var ux2 = (l.x2-l.x1)/L2, uy2 = (l.y2-l.y1)/L2;
+      var t2 = el("text", { x:m2.x - uy2*0, y:m2.y, "font-size":fs*1.05,
+        fill:cs.getPropertyValue("--sel").trim(), "text-anchor":"middle", "dominant-baseline":"middle",
+        transform:"rotate(" + (Math.atan2(uy2, ux2)*180/Math.PI) + " " + m2.x + " " + m2.y + ")" });
+      t2.textContent = fmt(L2);
+      svg.appendChild(t2);
+    }
+  }
+
+  // what is being drawn right now
+  if (ghost){
+    svg.appendChild(el("line", { x1:ghost.x1, y1:ghost.y1, x2:ghost.x2, y2:ghost.y2,
+      stroke:cs.getPropertyValue("--accent").trim(),
+      "stroke-width":kind === "wall" ? thick : px(1.6),
+      "stroke-dasharray":px(6)+" "+px(4), "stroke-linecap":"butt", opacity:"0.75" }));
+    var gl = len(ghost);
+    if (gl > 0.4){
+      var gt = el("text", { x:(ghost.x1+ghost.x2)/2, y:(ghost.y1+ghost.y2)/2 - px(14),
+        "font-size":fs*1.1, fill:cs.getPropertyValue("--accent").trim(), "text-anchor":"middle" });
+      gt.textContent = fmt(gl);
+      svg.appendChild(gt);
+    }
+  }
+  if (chain){
+    svg.appendChild(el("circle", { cx:chain.x, cy:chain.y, r:px(5), fill:"none",
+      stroke:cs.getPropertyValue("--accent").trim(), "stroke-width":px(2) }));
+  }
+  paintHint();
+}
+function byId(id){ var f = null; lines().forEach(function(l){ if (l.id === id) f = l; }); return f; }
+
+/* ------------------------------------------------------------------ snapping */
+function endpoints(){
+  var ps = [];
+  lines().forEach(function(l){ ps.push({x:l.x1,y:l.y1}); ps.push({x:l.x2,y:l.y2}); });
+  ps.push({x:0,y:0}, {x:PROJ.W,y:0}, {x:0,y:PROJ.H}, {x:PROJ.W,y:PROJ.H});
+  return ps;
+}
+/* With the 90 degree lock ON, STRAIGHT WINS. Nothing bends the line - not a corner sitting
+   a few pixels off the axis, not anything else. The first version let the endpoint snap
+   return before ortho was ever applied, so on a plan with corners everywhere almost every
+   tap came out crooked by a half inch or two: the lock was there and it lost every argument.
+
+   What a corner may still do is say WHERE ALONG the line to stop. Lining a new wall up with
+   one across the room is the whole reason to want the lock, so an endpoint pulls the far end
+   in or out along the locked axis and never off it. */
+function snapPoint(p, from){
+  var near = px(14), best = null, bd = near;
+  if (from && ortho){
+    var horiz = Math.abs(p.x - from.x) >= Math.abs(p.y - from.y);
+    var x = horiz ? p.x : from.x, y = horiz ? from.y : p.y;
+    endpoints().forEach(function(q){
+      var d = horiz ? Math.abs(q.x - x) : Math.abs(q.y - y);
+      if (d < bd){ bd = d; best = q; }
+    });
+    if (best){ if (horiz) x = best.x; else y = best.y; }
+    return { x:snap(x), y:snap(y) };
+  }
+  endpoints().forEach(function(q){                 // free: the nearest corner, any direction
+    var d = Math.sqrt((q.x-p.x)*(q.x-p.x) + (q.y-p.y)*(q.y-p.y));
+    if (d < bd){ bd = d; best = q; }
+  });
+  if (best) return { x:snap(best.x), y:snap(best.y) };
+  return { x:snap(p.x), y:snap(p.y) };
+}
+
+/* -------------------------------------------------------------- the actions */
+function addLine(a, b){
+  var l = { id:nid("l"), x1:snap(a.x), y1:snap(a.y), x2:snap(b.x), y2:snap(b.y),
+            t:thick, kind:kind, color:color, locked:false };
+  if (len(l) < MINLEN) return null;
+  push(); lines().push(l); save(); return l;
+}
+function hit(p){
+  var tol = px(13), best = null, bd = 1e9;
+  lines().forEach(function(l){
+    var pr = project(l, p.x, p.y);
+    if (pr.t < -0.02 || pr.t > 1.02) return;
+    var d = pr.d - (l.kind === "wall" ? l.t/2 : 0);
+    if (d < tol && d < bd){ bd = d; best = { line:l, t:Math.max(0, Math.min(1, pr.t)) }; }
+  });
+  return best;
+}
+function doTrim(p){
+  var h = hit(p);
+  if (!h) return;
+  if (h.line.locked){ flash("That line is locked. Unlock it first."); return; }
+  push();
+  var pieces = trimAt(h.line, h.t, lines());
+  var i = lines().indexOf(h.line);
+  var made = pieces.map(function(q){
+    return { id:nid("l"), x1:snap(q.x1), y1:snap(q.y1), x2:snap(q.x2), y2:snap(q.y2),
+             t:h.line.t, kind:h.line.kind, color:h.line.color, locked:false };
+  });
+  // A door sitting on a stretch that survived must survive with it. Dropping every opening
+  // on a trimmed wall is quick and quiet, and quiet is the fault: he would come back to a
+  // plan with a door missing and nothing to say when it went.
+  var keep = [];
+  ops().forEach(function(o){
+    if (o.line !== h.line.id){ keep.push(o); return; }
+    var a = o.at, b = o.at + o.w;
+    made.forEach(function(m){
+      var s0 = Math.sqrt((m.x1-h.line.x1)*(m.x1-h.line.x1) + (m.y1-h.line.y1)*(m.y1-h.line.y1));
+      var s1 = s0 + len(m);
+      if (a >= s0 - 1e-6 && b <= s1 + 1e-6)
+        keep.push({ id:o.id, line:m.id, kind:o.kind, at:snap(a - s0), w:o.w });
+    });
+  });
+  PROJ.ops = keep;
+  lines().splice(i, 1);
+  made.forEach(function(m){ lines().push(m); });
+  sel = null; closeSheet(); save(); draw();
+}
+function removeLine(l){
+  push();
+  PROJ.ops = ops().filter(function(o){ return o.line !== l.id; });
+  lines().splice(lines().indexOf(l), 1);
+  sel = null; closeSheet(); save(); draw();
+}
+// type a length: the far end moves along the line it already has
+function setLength(l, L){
+  if (L < MINLEN) return false;
+  var d = len(l), ux = (l.x2-l.x1)/d, uy = (l.y2-l.y1)/d;
+  push();
+  l.x2 = snap(l.x1 + ux*L); l.y2 = snap(l.y1 + uy*L);
+  save(); return true;
+}
+function moveLine(l, dx, dy){
+  l.x1 = snap(l.x1+dx); l.y1 = snap(l.y1+dy);
+  l.x2 = snap(l.x2+dx); l.y2 = snap(l.y2+dy);
+}
+
+/* ------------------------------------------------------------ openings on a wall */
+function addOpening(l, k, w, from){
+  var L = len(l);
+  if (w < 6 || from < 0 || from + w > L) return false;
+  push();
+  ops().push({ id:nid("o"), line:l.id, kind:k, at:snap(from), w:snap(w) });
+  save(); return true;
+}
+
+/* ------------------------------------------------------------------- pointer */
+var ptrs = {}, pan0 = null, pinch0 = null, down = null, moved = false, dragging = null;
+var touched = false;   // has he zoomed or panned himself? until he has, a resize re-fits
+
+svg.addEventListener("pointerdown", function(e){
+  svg.setPointerCapture(e.pointerId);
+  ptrs[e.pointerId] = { x:e.clientX, y:e.clientY };
+  var n = Object.keys(ptrs).length;
+  if (n === 2){
+    var k = Object.keys(ptrs), a = ptrs[k[0]], b = ptrs[k[1]];
+    pinch0 = { d:Math.hypot(a.x-b.x, a.y-b.y), w:view.w,
+               c:toModel((a.x+b.x)/2, (a.y+b.y)/2), vx:view.x, vy:view.y };
+    chain = null; ghost = null; down = null; dragging = null; draw();
+    return;
+  }
+  if (n > 2) return;
+  down = { cx:e.clientX, cy:e.clientY, m:toModel(e.clientX, e.clientY) };
+  moved = false;
+  if (mode === "pan"){ pan0 = { x:view.x, y:view.y }; return; }
+  if (mode === "select"){
+    var h = hit(down.m);
+    if (h && !h.line.locked && sel === h.line.id) dragging = { line:h.line, from:down.m };
+  }
+});
+
+svg.addEventListener("pointermove", function(e){
+  if (!(e.pointerId in ptrs)) return;
+  ptrs[e.pointerId] = { x:e.clientX, y:e.clientY };
+  if (pinch0){
+    var k = Object.keys(ptrs);
+    if (k.length < 2) return;
+    var a = ptrs[k[0]], b = ptrs[k[1]], d = Math.hypot(a.x-b.x, a.y-b.y);
+    var f = Math.max(0.15, Math.min(8, pinch0.d / Math.max(1, d)));
+    view.w = Math.max(24, Math.min(Math.max(PROJ.W, PROJ.H)*6, pinch0.w * f));
+    syncView();
+    var r = rect(), mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+    view.x = pinch0.c.x - (mx - r.left)/r.width * view.w;
+    view.y = pinch0.c.y - (my - r.top)/r.height * view.h;
+    touched = true;
+    draw();
+    return;
+  }
+  if (!down) return;
+  if (Math.hypot(e.clientX-down.cx, e.clientY-down.cy) > 6) moved = true;
+  var m = toModel(e.clientX, e.clientY);
+  if (mode === "pan" && pan0){
+    var r2 = rect();
+    view.x = pan0.x - (e.clientX-down.cx)/r2.width * view.w;
+    view.y = pan0.y - (e.clientY-down.cy)/r2.height * view.h;
+    touched = true;
+    draw(); return;
+  }
+  if (dragging){
+    moveLine(dragging.line, m.x - dragging.from.x, m.y - dragging.from.y);
+    dragging.from = m; draw(); return;
+  }
+  if (mode === "draw"){
+    var from = chain || (moved ? down.m : null);
+    if (from){ var q = snapPoint(m, from); ghost = { x1:from.x, y1:from.y, x2:q.x, y2:q.y }; draw(); }
+  }
+});
+
+svg.addEventListener("pointerup", function(e){
+  delete ptrs[e.pointerId];
+  if (Object.keys(ptrs).length < 2) pinch0 = null;
+  if (!down) return;
+  var m = toModel(e.clientX, e.clientY), d = down; down = null; pan0 = null;
+  if (dragging){ push(); dragging = null; save(); draw(); return; }
+  if (mode === "pan") return;
+
+  if (mode === "trim"){ doTrim(m); return; }
+
+  if (mode === "select"){
+    var h = hit(m);
+    sel = h ? h.line.id : null;
+    if (sel) openLine(byId(sel)); else closeSheet();
+    draw(); return;
+  }
+
+  if (mode === "draw"){
+    if (moved && !chain){                           // dragged: one line, done
+      var q = snapPoint(m, d.m);
+      var s = snapPoint(d.m, null);
+      addLine(s, q); ghost = null; draw(); return;
+    }
+    var p = snapPoint(m, chain);
+    if (!chain){ chain = p; ghost = null; showLen(true); draw(); return; }
+    if (Math.hypot(p.x-chain.x, p.y-chain.y) < MINLEN){   // tapped the same spot: end the chain
+      chain = null; ghost = null; showLen(false); draw(); return;
+    }
+    addLine(chain, p);
+    chain = p; ghost = null; draw();
+  }
+});
+svg.addEventListener("pointercancel", function(e){ delete ptrs[e.pointerId]; down = null; pinch0 = null; });
+
+/* ---------------------------------------------------------- typed length entry */
+var lenBox = document.getElementById("len"), lenv = document.getElementById("lenv");
+function showLen(on){ lenBox.classList.toggle("on", on && mode === "draw"); if (on) lenv.value = ""; }
+Array.prototype.forEach.call(lenBox.querySelectorAll("button"), function(b){
+  b.addEventListener("click", function(){
+    if (!chain) return;
+    var v = parseFt(lenv.value);
+    if (v === null || v < MINLEN){ flash(whyNot(lenv.value)); return; }
+    var d = b.getAttribute("data-dir");
+    var q = { x:chain.x + (d==="r"?v:d==="l"?-v:0), y:chain.y + (d==="d"?v:d==="u"?-v:0) };
+    addLine(chain, q);
+    chain = { x:snap(q.x), y:snap(q.y) };
+    lenv.value = ""; draw();
+  });
+});
+
+/* ------------------------------------------------------------------ the sheets */
+var sheet = document.getElementById("sheet");
+function closeSheet(){ sheet.classList.remove("on"); sheet.innerHTML = ""; sheetKind = null; }
+function flash(msg){
+  var h = document.getElementById("hint");
+  h.textContent = msg;
+  clearTimeout(flash.t);
+  flash.t = setTimeout(paintHint, 3200);
+}
+function paintHint(){
+  var h = document.getElementById("hint");
+  if (!PROJ){ h.textContent = ""; return; }
+  h.textContent = mode === "draw"
+      ? (chain ? "Tap the next corner — or type a size and an arrow. Tap the same spot to stop."
+               : "Tap to start a line, or drag one out. Two fingers to zoom.")
+    : mode === "trim" ? "Tap the piece to rub out. It stops at the lines that cross it."
+    : mode === "select" ? "Tap a line. Tap it again and drag to move it."
+    : "Drag to move the sheet. Two fingers to zoom.";
+}
+
+function openLine(l){
+  if (!l) return;
+  sheet.classList.add("on");
+  sheetKind = "line";
+  sheet.innerHTML = "";
+  var h3 = document.createElement("h3");
+  h3.textContent = (l.kind === "wall" ? "Wall " + inchText(l.t) : "Reference line") + "  —  " + fmt(len(l));
+  sheet.appendChild(h3);
+
+  // length
+  var r1 = document.createElement("div"); r1.className = "row";
+  var inp = document.createElement("input"); inp.type = "text"; inp.value = fmt(len(l)).replace(/'-/, "-").replace(/"$/, "");
+  var set = document.createElement("button"); set.textContent = "Set length";
+  var err = document.createElement("span"); err.className = "err";
+  set.addEventListener("click", function(){
+    var v = parseFt(inp.value);
+    if (v === null){ err.textContent = whyNot(inp.value); return; }
+    if (l.locked){ err.textContent = "Locked."; return; }
+    if (!setLength(l, v)){ err.textContent = "Too short."; return; }
+    err.textContent = ""; draw(); openLine(l);
+  });
+  r1.appendChild(inp); r1.appendChild(set); r1.appendChild(err);
+  sheet.appendChild(r1);
+
+  // kind + thickness
+  var r2 = document.createElement("div"); r2.className = "row";
+  [["wall","Wall line"],["ref","Reference line"]].forEach(function(k){
+    var b = document.createElement("button");
+    b.textContent = k[1]; b.setAttribute("aria-pressed", l.kind === k[0] ? "true" : "false");
+    b.addEventListener("click", function(){
+      if (l.locked) return flash("Locked.");
+      push(); l.kind = k[0]; save(); draw(); openLine(l);
+    });
+    r2.appendChild(b);
+  });
+  sheet.appendChild(r2);
+
+  if (l.kind === "wall"){
+    var r3 = document.createElement("div"); r3.className = "row";
+    var lb = document.createElement("span"); lb.className = "note"; lb.textContent = "Thickness"; r3.appendChild(lb);
+    THICK.forEach(function(t){
+      var b = document.createElement("button");
+      b.textContent = inchText(t); b.setAttribute("aria-pressed", l.t === t ? "true" : "false");
+      b.addEventListener("click", function(){
+        if (l.locked) return flash("Locked.");
+        push(); l.t = t; save(); draw(); openLine(l);
+      });
+      r3.appendChild(b);
+    });
+    sheet.appendChild(r3);
+  }
+
+  // colour
+  var r4 = document.createElement("div"); r4.className = "row";
+  var cl = document.createElement("span"); cl.className = "note"; cl.textContent = "Colour"; r4.appendChild(cl);
+  COLORS.forEach(function(c){
+    var b = document.createElement("button");
+    b.className = "sw"; b.style.background = c;
+    b.setAttribute("aria-pressed", l.color === c ? "true" : "false");
+    b.setAttribute("aria-label", c);
+    b.addEventListener("click", function(){
+      if (l.locked) return flash("Locked.");
+      push(); l.color = c; save(); draw(); openLine(l);
+    });
+    r4.appendChild(b);
+  });
+  sheet.appendChild(r4);
+
+  // door / window
+  if (l.kind === "wall"){
+    var r5 = document.createElement("div"); r5.className = "row";
+    var dw = document.createElement("input"); dw.type = "text"; dw.placeholder = "size  3-0";
+    var df = document.createElement("input"); df.type = "text"; df.placeholder = "from end  2-0";
+    var bd = document.createElement("button"); bd.textContent = "Door";
+    var bw = document.createElement("button"); bw.textContent = "Window";
+    var e2 = document.createElement("span"); e2.className = "err";
+    function place(k){
+      var w = parseFt(dw.value), f = parseFt(df.value);
+      if (w === null){ e2.textContent = whyNot(dw.value); return; }
+      if (f === null){ e2.textContent = "Where from the first end? Try 2-0."; return; }
+      if (!addOpening(l, k, w, f)){
+        e2.textContent = "That does not fit on a " + fmt(len(l)) + " wall.";
+        return;
+      }
+      e2.textContent = ""; draw(); openLine(l);
+    }
+    bd.addEventListener("click", function(){ place("door"); });
+    bw.addEventListener("click", function(){ place("window"); });
+    r5.appendChild(dw); r5.appendChild(df); r5.appendChild(bd); r5.appendChild(bw); r5.appendChild(e2);
+    sheet.appendChild(r5);
+
+    var mine = ops().filter(function(o){ return o.line === l.id; });
+    if (mine.length){
+      var r6 = document.createElement("div"); r6.className = "row";
+      mine.forEach(function(o){
+        var b = document.createElement("button");
+        b.textContent = (o.kind === "door" ? "D " : "W ") + fmt(o.w) + " ×";
+        b.addEventListener("click", function(){
+          push();
+          PROJ.ops = ops().filter(function(q){ return q.id !== o.id; });
+          save(); draw(); openLine(l);
+        });
+        r6.appendChild(b);
+      });
+      sheet.appendChild(r6);
+    }
+  }
+
+  // lock / delete / close
+  var r7 = document.createElement("div"); r7.className = "row";
+  var lk = document.createElement("button");
+  lk.textContent = l.locked ? "Unlock" : "Lock";
+  lk.setAttribute("aria-pressed", l.locked ? "true" : "false");
+  lk.addEventListener("click", function(){ push(); l.locked = !l.locked; save(); draw(); openLine(l); });
+  var del = document.createElement("button");
+  del.textContent = "Delete whole line";
+  del.addEventListener("click", function(){
+    if (l.locked) return flash("Locked. Unlock it first.");
+    removeLine(l);
+  });
+  var cl2 = document.createElement("button"); cl2.className = "ghost"; cl2.textContent = "Close";
+  cl2.addEventListener("click", function(){ sel = null; closeSheet(); draw(); });
+  r7.appendChild(lk); r7.appendChild(del); r7.appendChild(cl2);
+  sheet.appendChild(r7);
+}
+
+/* ---------------------------------------------------------------- the options bar */
+function paintOpts(){
+  var bar = document.getElementById("opts");
+  bar.innerHTML = "";
+  function lbl(t){ var s = document.createElement("span"); s.className = "lbl"; s.textContent = t; bar.appendChild(s); }
+  function btn(text, on, fn, cls){
+    var b = document.createElement("button");
+    if (cls) b.className = cls; else b.textContent = text;
+    if (cls) b.setAttribute("aria-label", text);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    b.addEventListener("click", fn);
+    bar.appendChild(b); return b;
+  }
+  lbl("New line");
+  [["wall","Wall"],["ref","Ref"]].forEach(function(k){
+    btn(k[1], kind === k[0], function(){ kind = k[0]; paintOpts(); draw(); });
+  });
+  THICK.forEach(function(t){
+    var b = btn(inchText(t), kind === "wall" && thick === t, function(){ thick = t; kind = "wall"; paintOpts(); draw(); });
+    b.disabled = false;
+  });
+  COLORS.forEach(function(c){
+    var b = btn(c, color === c, function(){ color = c; paintOpts(); }, "sw");
+    b.style.background = c;
+  });
+  // the 90 degree lock lives in the tools row, not here: it decides every line he draws, and
+  // on a phone this bar scrolls, so after six colour swatches it was off the edge of the screen.
+}
+
+/* ------------------------------------------------------------------- the menu */
+function openProjects(){
+  sheet.classList.add("on");
+  sheetKind = "projects";
+  sheet.innerHTML = "";
+  var h3 = document.createElement("h3"); h3.textContent = "Projects"; sheet.appendChild(h3);
+  var s = store();
+  s.list.forEach(function(p){
+    var r = document.createElement("div"); r.className = "row";
+    var b = document.createElement("button");
+    b.textContent = p.name + "   " + fmt(p.W) + " × " + fmt(p.H);
+    b.setAttribute("aria-pressed", PROJ && p.id === PROJ.id ? "true" : "false");
+    b.addEventListener("click", function(){ open(p.id); });
+    var x = document.createElement("button"); x.className = "ghost"; x.textContent = "×";
+    x.addEventListener("click", function(){
+      if (!confirm("Delete the project “" + p.name + "”? This cannot be undone.")) return;
+      var st = store();
+      st.list = st.list.filter(function(q){ return q.id !== p.id; });
+      writeStore(st);
+      if (db) db.doc("projects/" + p.id).delete().catch(function(){});
+      if (PROJ && PROJ.id === p.id){ PROJ = null; }
+      openProjects();
+      if (!PROJ && st.list.length) open(st.list[0].id); else if (!PROJ) draw();
+    });
+    r.appendChild(b); r.appendChild(x);
+    sheet.appendChild(r);
+  });
+  var r2 = document.createElement("div"); r2.className = "row";
+  var nm = document.createElement("input"); nm.type = "text"; nm.placeholder = "Name"; nm.style.width = "9em";
+  var w = document.createElement("input"); w.type = "text"; w.placeholder = "width  40";
+  var h = document.createElement("input"); h.type = "text"; h.placeholder = "depth  60";
+  var mk = document.createElement("button"); mk.textContent = "New project";
+  var er = document.createElement("span"); er.className = "err";
+  mk.addEventListener("click", function(){
+    var W = parseFt(w.value), H = parseFt(h.value);
+    if (!nm.value.trim()){ er.textContent = "Give it a name."; return; }
+    if (W === null){ er.textContent = whyNot(w.value); return; }
+    if (H === null){ er.textContent = whyNot(h.value); return; }
+    var p = newProject(nm.value.trim(), W, H);
+    var st = store(); st.list.push(p); st.open = p.id; writeStore(st);
+    open(p.id);
+  });
+  r2.appendChild(nm); r2.appendChild(w); r2.appendChild(h); r2.appendChild(mk); r2.appendChild(er);
+  sheet.appendChild(r2);
+  var n = document.createElement("div"); n.className = "note";
+  n.textContent = "Sizes in feet-inches: 40, or 33-6. The plot is the dotted outline; lines may be drawn anywhere.";
+  sheet.appendChild(n);
+}
+
+function open(id){
+  var s = store(), p = null;
+  s.list.forEach(function(q){ if (q.id === id) p = q; });
+  if (!p) return;
+  PROJ = p; PROJ.ops = PROJ.ops || []; PROJ.lines = PROJ.lines || []; PROJ.seq = PROJ.seq || 1;
+  s.open = id; writeStore(s);
+  sel = null; chain = null; ghost = null; undoStack = [];
+  document.getElementById("undo").disabled = true;
+  document.getElementById("pname").textContent = PROJ.name;
+  document.getElementById("psize").textContent = fmt(PROJ.W) + " × " + fmt(PROJ.H);
+  closeSheet(); showLen(false); fit();
+}
+
+/* -------------------------------------------------------------------- wiring */
+Array.prototype.forEach.call(document.querySelectorAll("#tools button[data-mode]"), function(b){
+  b.addEventListener("click", function(){
+    mode = b.getAttribute("data-mode");
+    Array.prototype.forEach.call(document.querySelectorAll("#tools button[data-mode]"), function(o){
+      o.setAttribute("aria-pressed", o === b ? "true" : "false");
+    });
+    chain = null; ghost = null; showLen(false);
+    if (mode !== "select"){ sel = null; closeSheet(); }
+    draw();
+  });
+});
+document.getElementById("ortho").addEventListener("click", function(){
+  ortho = !ortho;
+  this.setAttribute("aria-pressed", ortho ? "true" : "false");
+  flash(ortho ? "Every line locked to 90°." : "90° lock off — lines go where you put them.");
+  draw();
+});
+document.getElementById("fit").addEventListener("click", fit);
+document.getElementById("undo").addEventListener("click", undo);
+document.getElementById("menu").addEventListener("click", openProjects);
+window.addEventListener("resize", function(){
+  // Turning the phone, or opening the keyboard, changes the shape of the screen under a view
+  // that was fitted to the old one. If he has not moved the view himself there is nothing to
+  // preserve, so fit it again - better than showing him a plot that has slid off the edge.
+  if (!touched){ fit(); return; }
+  var cx = view.x + view.w/2, cy = view.y + view.h/2;   // his own zoom: keep the middle
+  syncView();
+  view.x = cx - view.w/2; view.y = cy - view.h/2;
+  draw();
+});
+
+paintOpts();
+(function start(){
+  var s = store();
+  if (!s.list.length){
+    // one project to land in, so the first tap draws something instead of asking a question
+    var p = newProject("Sketch 1", 40*12, 60*12);
+    INVENTED = p.id;                 // nobody asked for this one; the store may hold better
+    s.list.push(p); s.open = p.id; writeStore(s);
+  }
+  open(s.open || s.list[0].id);
+  document.getElementById("undo").disabled = true;
+  paintSaveWarning();
+})();
+
+/* The artifact store is a copy of what the browser holds. A copy that is only ever written
+   is not a copy: clear this tablet's site data, or open the same link on the phone, and the
+   local list is empty while the drawings sit safe in the store with no road back to them.
+   So the FIRST thing asked of the store is the list of projects, not one project by id. */
+(async function(){
+  try {
+    db = await claude.use("db");
+    paintSaveWarning();
+    if (!db) return;
+    var snap = await db.collection("projects").get();
+    var raw = (snap && snap.docs) ? snap.docs : (Array.isArray(snap) ? snap : []);
+    var remote = raw.map(function(d){ return (d && typeof d.data === "function") ? d.data() : d; })
+                    .filter(function(p){ return p && p.id && p.name; })
+                    .sort(function(a, b){ return a.id < b.id ? -1 : 1; });
+
+    var s = store(), known = {}, added = 0;
+    s.list.forEach(function(p){ known[p.id] = true; });
+    remote.forEach(function(p){
+      if (known[p.id]) return;                       // what is here already wins: local is primary
+      p.lines = p.lines || []; p.ops = p.ops || []; p.seq = p.seq || 1;
+      s.list.push(p); added++;
+    });
+
+    if (added){
+      // the blank project made a moment ago for a first visit was a guess; his own work beats it
+      var inv = null;
+      if (INVENTED) s.list.forEach(function(q){ if (q.id === INVENTED) inv = q; });
+      if (inv && !inv.lines.length && !inv.ops.length){
+        s.list = s.list.filter(function(q){ return q.id !== INVENTED; });
+        INVENTED = null;
+        writeStore(s);
+        open(s.list[s.list.length - 1].id);
+      } else {
+        writeStore(s);
+        if (sheetKind === "projects") openProjects();
+      }
+      flash(added + (added === 1 ? " project" : " projects") + " brought back from the store.");
+    }
+
+    // and the open project, in case this device has its name but not its latest lines
+    if (PROJ && !PROJ.lines.length){
+      var one = await db.doc("projects/" + PROJ.id).get();
+      var d = one && one.data ? one.data() : null;
+      if (d && d.lines && d.lines.length){ PROJ.lines = d.lines; PROJ.ops = d.ops || []; draw(); }
+    }
+  } catch (e){ db = null; paintSaveWarning(); }
+})();
+</script>
+
+</body>
+</html>
