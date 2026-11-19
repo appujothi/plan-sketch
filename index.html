@@ -55,9 +55,14 @@ button.ghost{ background:transparent; }
 button:disabled{ opacity:.4; }
 #warn{ display:none; padding:9px 12px; background:var(--sel); color:#fff; font-size:13px; line-height:1.35; }
 #warn.on{ display:block; }
+/* The modes scroll when they will not fit; 90 degrees and Fit never do. A control that
+   decides every line he draws must not be the one that slides off a narrow screen. */
 #tools{ display:flex; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line);
-        background:var(--panel); overflow-x:auto; }
+        background:var(--panel); align-items:center; }
+#modes{ display:flex; gap:6px; flex:1 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; }
+#modes::-webkit-scrollbar{ display:none; }
 #tools button{ flex:0 0 auto; }
+@media (max-width:420px){ #tools button{ padding:7px 9px; } }
 #opts{ display:flex; gap:6px; padding:6px 10px; border-bottom:1px solid var(--line);
        background:var(--panel); overflow-x:auto; align-items:center; }
 #opts button{ flex:0 0 auto; padding:5px 9px; font-size:13px; }
@@ -95,11 +100,13 @@ input[type=text]{ font:inherit; color:inherit; background:var(--bg); border:1px 
 <div id="warn"></div>
 
 <div id="tools">
-  <button id="t-draw" data-mode="draw" aria-pressed="true">Draw</button>
-  <button id="t-select" data-mode="select" aria-pressed="false">Select</button>
-  <button id="t-trim" data-mode="trim" aria-pressed="false">Erase</button>
-  <button id="t-pan" data-mode="pan" aria-pressed="false">Pan</button>
-  <span class="spacer"></span>
+  <div id="modes">
+    <button data-mode="draw" aria-pressed="true">Draw</button>
+    <button data-mode="select" aria-pressed="false">Select</button>
+    <button data-mode="trim" aria-pressed="false">Erase</button>
+    <button data-mode="join" aria-pressed="false">Join</button>
+    <button data-mode="pan" aria-pressed="false">Pan</button>
+  </div>
   <button id="ortho" aria-pressed="true" title="Lock every line to 90 degrees">90&deg;</button>
   <button id="fit" class="ghost">Fit</button>
 </div>
@@ -192,6 +199,19 @@ function segInt(a, b){
   if (t < 1e-9 || t > 1-1e-9 || u < -1e-9 || u > 1+1e-9) return null;
   return { t:t, u:u };
 }
+/* Where would two lines meet if both ran on for ever? `segInt` answers only where they cross
+   WITHIN their own lengths, which is the question erase asks. Joining asks the opposite one:
+   two walls drawn at an angle usually do not reach each other at all, and the whole point is
+   to run them out until they do. Parallel is still no answer - two walls that never converge
+   have no corner, however far they run. */
+function lineInt(a, b){
+  var r1 = a.x2-a.x1, r2 = a.y2-a.y1, s1 = b.x2-b.x1, s2 = b.y2-b.y1;
+  var d = r1*s2 - r2*s1;
+  if (Math.abs(d) < 1e-9) return null;
+  return { t: ((b.x1-a.x1)*s2 - (b.y1-a.y1)*s1) / d,
+           u: ((b.x1-a.x1)*r2 - (b.y1-a.y1)*r1) / d };
+}
+
 // How far along a line does a point fall, and how far off it?
 function project(l, px, py){
   var dx = l.x2-l.x1, dy = l.y2-l.y1, L2 = dx*dx + dy*dy;
@@ -444,6 +464,15 @@ function draw(){
     svg.appendChild(c);
   });
 
+  // the first line picked for a join, so he can see what he is joining to what
+  if (joinA && byId(joinA.line.id)){
+    var ja = joinA.line;
+    svg.appendChild(el("line", { x1:ja.x1, y1:ja.y1, x2:ja.x2, y2:ja.y2,
+      stroke:cs.getPropertyValue("--accent").trim(),
+      "stroke-width":Math.max(ja.kind === "wall" ? ja.t : 0, px(3)) + px(4),
+      opacity:"0.4", "stroke-linecap":"butt" }));
+  }
+
   // the selected line, lit up with its size on it
   if (sel){
     var l = byId(sel);
@@ -565,6 +594,66 @@ function doTrim(p){
   made.forEach(function(m){ lines().push(m); });
   sel = null; closeSheet(); save(); draw();
 }
+/* JOIN (a fillet of no radius). Two lines at any angle, each tapped once: both run out to
+   where they meet, or back to it, and the corner closes exactly. The END THAT GOES is the one
+   away from where he tapped - the same rule as every drafting program, and the only one that
+   needs no further question.
+
+   `corner(l, tPick, tI)` edits one line. Both get the SAME snapped point, so the two ends sit
+   on the same coordinate rather than a half inch apart looking closed.  */
+function corner(l, tPick, tI){
+  var P = at(l, tI), before = len(l);
+  var sx = snap(P.x), sy = snap(P.y), moved = 0;
+  if (tPick <= tI){ l.x2 = sx; l.y2 = sy; }                 // keep the side he tapped
+  else { moved = tI * before; l.x1 = sx; l.y1 = sy; }
+  return moved;                                             // how far the START shifted, in inches
+}
+function joinLines(A, tA, B, tB){
+  if (A.id === B.id) return "Tap two different lines.";
+  if (A.locked || B.locked) return "One of those is locked. Unlock it first.";
+  var i = lineInt(A, B);
+  if (!i) return "Those two are parallel — they never meet.";
+
+  // refuse before changing anything, so a refusal leaves the drawing exactly as it was
+  var la = len(A), lb = len(B);
+  var keepA = tA <= i.t ? i.t * la : (1 - i.t) * la;
+  var keepB = tB <= i.u ? i.u * lb : (1 - i.u) * lb;
+  if (keepA < MINLEN || keepB < MINLEN) return "That would leave nothing of one of them.";
+  var reach = Math.max(Math.abs(i.t - 0.5), Math.abs(i.u - 0.5)) - 0.5;
+  if (reach > 4) return "They would have to run a long way to meet. Draw them closer first.";
+
+  push();
+  var shiftA = corner(A, tA, i.t), shiftB = corner(B, tB, i.u);
+  var lost = reflowOpenings(A, shiftA) + reflowOpenings(B, shiftB);
+  save();
+  return lost ? ("Joined. " + lost + (lost === 1 ? " opening no longer fits and was removed."
+                                                 : " openings no longer fit and were removed.")) : null;
+}
+/* An opening is measured from its line's first end. Move that end and every opening on it is
+   measured from somewhere else - so they are re-measured here, and any that no longer fits on
+   the shortened wall is removed AND COUNTED, never quietly dropped. */
+function reflowOpenings(l, shift){
+  var L = len(l), lost = 0;
+  PROJ.ops = ops().filter(function(o){
+    if (o.line !== l.id) return true;
+    o.at = snap(o.at - shift);
+    if (o.at < 0 || o.at + o.w > L + 1e-6){ lost++; return false; }
+    return true;
+  });
+  return lost;
+}
+
+var joinA = null;                 // the first line tapped with Join, waiting for its partner
+function doJoin(p){
+  var h = hit(p);
+  if (!h){ joinA = null; draw(); return; }
+  if (!joinA){ joinA = h; draw(); flash("Now tap the line to join it to."); return; }
+  var msg = joinLines(joinA.line, joinA.t, h.line, h.t);
+  joinA = null;
+  if (msg) flash(msg);
+  sel = null; closeSheet(); draw();
+}
+
 function removeLine(l){
   push();
   PROJ.ops = ops().filter(function(o){ return o.line !== l.id; });
@@ -611,6 +700,12 @@ svg.addEventListener("pointerdown", function(e){
   if (n > 2) return;
   down = { cx:e.clientX, cy:e.clientY, m:toModel(e.clientX, e.clientY) };
   moved = false;
+  /* Where the line will REALLY begin, worked out now and used for everything after.
+     The start snaps to a corner if one is near; squaring the far end to his raw finger
+     instead of to that corner is how a line begun on an existing corner came out slanted
+     with the 90 degree lock on - and the preview, squared the same wrong way, agreed with
+     it all the way to the release. */
+  if (mode === "draw") down.s = snapPoint(down.m, null);
   if (mode === "pan"){ pan0 = { x:view.x, y:view.y }; return; }
   if (mode === "select"){
     var h = hit(down.m);
@@ -650,7 +745,7 @@ svg.addEventListener("pointermove", function(e){
     dragging.from = m; draw(); return;
   }
   if (mode === "draw"){
-    var from = chain || (moved ? down.m : null);
+    var from = chain || (moved ? down.s : null);
     if (from){ var q = snapPoint(m, from); ghost = { x1:from.x, y1:from.y, x2:q.x, y2:q.y }; draw(); }
   }
 });
@@ -665,6 +760,8 @@ svg.addEventListener("pointerup", function(e){
 
   if (mode === "trim"){ doTrim(m); return; }
 
+  if (mode === "join"){ doJoin(m); return; }
+
   if (mode === "select"){
     var h = hit(m);
     sel = h ? h.line.id : null;
@@ -674,8 +771,8 @@ svg.addEventListener("pointerup", function(e){
 
   if (mode === "draw"){
     if (moved && !chain){                           // dragged: one line, done
-      var q = snapPoint(m, d.m);
-      var s = snapPoint(d.m, null);
+      var s = d.s || snapPoint(d.m, null);      // the start, snapped
+      var q = snapPoint(m, s);                  // square to THAT, not to his finger
       addLine(s, q); ghost = null; draw(); return;
     }
     var p = snapPoint(m, chain);
@@ -720,6 +817,8 @@ function paintHint(){
   h.textContent = mode === "draw"
       ? (chain ? "Tap the next corner — or type a size and an arrow. Tap the same spot to stop."
                : "Tap to start a line, or drag one out. Two fingers to zoom.")
+    : mode === "join" ? (joinA ? "Now tap the other line. The ends you tapped are the ends that stay."
+                               : "Tap one line, then the other. Both run out to meet in a corner.")
     : mode === "trim" ? "Tap the piece to rub out. It stops at the lines that cross it."
     : mode === "select" ? "Tap a line. Tap it again and drag to move it."
     : "Drag to move the sheet. Two fingers to zoom.";
@@ -943,13 +1042,13 @@ function open(id){
 }
 
 /* -------------------------------------------------------------------- wiring */
-Array.prototype.forEach.call(document.querySelectorAll("#tools button[data-mode]"), function(b){
+Array.prototype.forEach.call(document.querySelectorAll("#modes button[data-mode]"), function(b){
   b.addEventListener("click", function(){
     mode = b.getAttribute("data-mode");
-    Array.prototype.forEach.call(document.querySelectorAll("#tools button[data-mode]"), function(o){
+    Array.prototype.forEach.call(document.querySelectorAll("#modes button[data-mode]"), function(o){
       o.setAttribute("aria-pressed", o === b ? "true" : "false");
     });
-    chain = null; ghost = null; showLen(false);
+    chain = null; ghost = null; joinA = null; showLen(false);
     if (mode !== "select"){ sel = null; closeSheet(); }
     draw();
   });
