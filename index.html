@@ -68,18 +68,36 @@ button:disabled{ opacity:.4; }
 #tools button{ flex:0 0 auto; }
 @media (max-width:430px){ #tools button{ padding:7px 7px; font-size:14px; } }
 #opts{ display:flex; gap:6px; padding:6px 10px; border-bottom:1px solid var(--line);
-       background:var(--panel); overflow-x:auto; align-items:center; }
+       background:var(--panel); flex-wrap:wrap; align-items:center; }
 #opts button{ flex:0 0 auto; padding:5px 9px; font-size:13px; }
 #opts .lbl{ color:var(--mut); font-size:12px; flex:0 0 auto; margin-right:2px; }
+/* On a phone the words go and the controls stay. The three colour swatches that used to sit
+   off the right-hand edge of this row were controls he did not have. */
+@media (max-width:430px){
+  #opts .lbl{ display:none; }
+  #opts button{ padding:5px 7px; }
+  .sw{ width:22px; height:22px; }
+}
 .sw{ width:24px; height:24px; border-radius:50%; border:2px solid var(--line); padding:0; flex:0 0 auto; }
 .sw[aria-pressed="true"]{ border-color:var(--ink); }
 #stage{ flex:1; position:relative; min-height:0; }
 svg{ width:100%; height:100%; display:block; touch-action:none; }
 #hint{ position:absolute; left:10px; right:10px; bottom:10px; text-align:center; color:var(--mut);
        font-size:12.5px; pointer-events:none; }
+/* THE PANEL. On a phone it comes up from the bottom and is held to half the height, with
+   its own scroll - a sheet taller than that hides the drawing it is describing. On anything
+   wide it goes down the RIGHT instead, where a plan drawn in the middle of the paper is not
+   under it at all. He is at a desk as often as on a phone, and at a desk the old sheet
+   covered the very thing he had just selected. */
 #sheet{ position:absolute; left:0; right:0; bottom:0; background:var(--sheet); border-top:1px solid var(--line);
-        padding:12px 14px 16px; display:none; box-shadow:0 -8px 24px rgba(0,0,0,.14); }
+        padding:12px 14px 16px; display:none; box-shadow:0 -8px 24px rgba(0,0,0,.14);
+        max-height:52%; overflow-y:auto; }
 #sheet.on{ display:block; }
+@media (min-width:760px){
+  #sheet{ left:auto; right:0; top:0; bottom:0; width:330px; max-height:none;
+          border-top:none; border-left:1px solid var(--line);
+          box-shadow:-8px 0 24px rgba(0,0,0,.12); }
+}
 #sheet h3{ margin:0 0 8px; font-size:14px; font-weight:650; }
 .row{ display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
 input[type=text]{ font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line);
@@ -106,12 +124,13 @@ input[type=text]{ font:inherit; color:inherit; background:var(--bg); border:1px 
 <div id="tools">
   <div id="modes">
     <button data-mode="draw" aria-pressed="true">Draw</button>
-    <button data-mode="select" aria-pressed="false">Select</button>
+    <button data-mode="select" aria-pressed="false">Box</button>
     <button data-mode="trim" aria-pressed="false">Erase</button>
     <button data-mode="join" aria-pressed="false">Join</button>
     <button data-mode="name" aria-pressed="false">Name</button>
   </div>
   <button data-mode="pan" aria-pressed="false" title="Drag the sheet about">&#10021;</button>
+  <button id="refbtn" class="ghost" title="Reference lines: hide, lock or clear them">Ref</button>
   <button id="ortho" aria-pressed="true" title="Lock every line to 90 degrees">90&deg;</button>
   <button id="fit" class="ghost">Fit</button>
 </div>
@@ -431,11 +450,12 @@ function nid(p){ return p + (PROJ.seq++); }
 function snapshot(){
   return JSON.stringify({ lines: PROJ.lines, ops: PROJ.ops, labels: labels() });
 }
-function push(){
-  undoStack.push(snapshot());
+function pushState(str){
+  undoStack.push(str);
   if (undoStack.length > 80) undoStack.shift();
   document.getElementById("undo").disabled = false;
 }
+function push(){ pushState(snapshot()); }
 function undo(){
   if (!undoStack.length) return;
   var s = JSON.parse(undoStack.pop());
@@ -517,6 +537,10 @@ function buildRect(){
   return { x0:v.l, y0:v.t, x1:PROJ.W - v.r, y1:PROJ.H - v.b };
 }
 function labels(){ if (!PROJ) return []; PROJ.labels = PROJ.labels || []; return PROJ.labels; }
+/* Reference lines can be put out of the way as a group. Hidden, they are not drawn, not
+   tapped, not caught by a box and offer no corner to snap to - a line he cannot see must
+   not be a line he can hit by accident. They are still there, and still in the file. */
+function visible(l){ return !(l.kind === "ref" && PROJ && PROJ.refHidden); }
 // 10'-0" reads as 10 in a box he is about to type into again; 10'-6" must keep its inches
 function fmtShort(v){ return (Math.abs(v % 12) < 0.01) ? String(Math.round(v/12)) : fmt(v); }
 function sizeText(){
@@ -627,7 +651,7 @@ function draw(){
 
   // reference lines first, under the walls
   lines().forEach(function(l){
-    if (l.kind !== "ref") return;
+    if (l.kind !== "ref" || PROJ.refHidden) return;
     svg.appendChild(el("line", { x1:l.x1, y1:l.y1, x2:l.x2, y2:l.y2, stroke:l.color,
       "stroke-width":px(1.4), "stroke-dasharray":px(9)+" "+px(5), "stroke-linecap":"butt" }));
   });
@@ -700,6 +724,17 @@ function draw(){
     t2.textContent = fmt(L2);
     svg.appendChild(t2);
   });
+  /* Something to take hold of. A wall already drawn can be made longer or shorter by its own
+     end, keeping its thickness, its colour and the doors cut into it - all of which drawing
+     it again would throw away. */
+  if (one && !selNow[0].locked){
+    var gl = selNow[0], gr = px(5);
+    [[gl.x1, gl.y1], [gl.x2, gl.y2]].forEach(function(p){
+      svg.appendChild(el("rect", { x:p[0]-gr, y:p[1]-gr, width:2*gr, height:2*gr,
+        fill:cs.getPropertyValue("--sel").trim(), "fill-opacity":"0.8",
+        stroke:cs.getPropertyValue("--sel").trim(), "stroke-width":px(1) }));
+    });
+  }
 
   /* THE FIGURES. Clear gaps, worked out in allDims and only drawn here - so that what the
      harness checks and what he reads off the screen are the same numbers. */
@@ -741,11 +776,28 @@ function draw(){
 
   // the box being dragged round them
   if (marquee){
-    svg.appendChild(el("rect", { x:Math.min(marquee.x0, marquee.x1), y:Math.min(marquee.y0, marquee.y1),
+    // solid, dragged left to right: it takes what is wholly inside.
+    // dashed, dragged right to left: it takes everything it touches. He can see which he has.
+    var xing = crossingBox(marquee);
+    var mr = el("rect", { x:Math.min(marquee.x0, marquee.x1), y:Math.min(marquee.y0, marquee.y1),
       width:Math.abs(marquee.x1-marquee.x0), height:Math.abs(marquee.y1-marquee.y0),
-      fill:cs.getPropertyValue("--sel").trim(), "fill-opacity":"0.08",
-      stroke:cs.getPropertyValue("--sel").trim(), "stroke-width":px(1.5),
-      "stroke-dasharray":px(6)+" "+px(4) }));
+      fill:cs.getPropertyValue("--sel").trim(), "fill-opacity":xing ? "0.13" : "0.06",
+      stroke:cs.getPropertyValue("--sel").trim(), "stroke-width":px(1.5) });
+    if (xing) mr.setAttribute("stroke-dasharray", px(6)+" "+px(4));
+    svg.appendChild(mr);
+  }
+
+  /* The tracking guides: a dotted line back to the end this point has put itself in line
+     with, and a ring round that end. Drawn only while something is actually being placed. */
+  if ((chain || ghost || grip) && guides.length){
+    var gc = cs.getPropertyValue("--accent").trim();
+    guides.forEach(function(g){
+      svg.appendChild(el("line", { x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:gc,
+        "stroke-width":px(1), "stroke-dasharray":px(1.5)+" "+px(4.5),
+        "stroke-linecap":"round", opacity:"0.85" }));
+      svg.appendChild(el("circle", { cx:g.x1, cy:g.y1, r:px(4), fill:"none",
+        stroke:gc, "stroke-width":px(1.2), opacity:"0.9" }));
+    });
   }
 
   // what is being drawn right now
@@ -773,7 +825,10 @@ function byId(id){ var f = null; lines().forEach(function(l){ if (l.id === id) f
 /* ------------------------------------------------------------------ snapping */
 function endpoints(){
   var ps = [];
-  lines().forEach(function(l){ ps.push({x:l.x1,y:l.y1}); ps.push({x:l.x2,y:l.y2}); });
+  lines().forEach(function(l){
+    if (!visible(l)) return;
+    ps.push({x:l.x1,y:l.y1}); ps.push({x:l.x2,y:l.y2});
+  });
   ps.push({x:0,y:0}, {x:PROJ.W,y:0}, {x:0,y:PROJ.H}, {x:PROJ.W,y:PROJ.H});
   // and the corners of the buildable area, so a wall can be laid ON the setback line
   // instead of near it. With the 90 degree lock on, one of these pulls the whole wall
@@ -790,7 +845,16 @@ function endpoints(){
    What a corner may still do is say WHERE ALONG the line to stop. Lining a new wall up with
    one across the room is the whole reason to want the lock, so an endpoint pulls the far end
    in or out along the locked axis and never off it. */
+/* TRACKING. A point directly above, below, left or right of an end already on the drawing
+   is nearly always the point he meant - the wall that carries on where another one stopped,
+   the partition that lines up with the one across the room. Finding that by eye on a phone
+   is hopeless, so the point is pulled onto the line of that end and a DASHED GUIDE is drawn
+   back to it saying which end it found.
+   The guide is not decoration. A snap that moves the point without saying why is a point he
+   did not place, and he would only find out by measuring it afterwards. */
+var guides = [];
 function snapPoint(p, from){
+  guides = [];
   var near = px(14), best = null, bd = near;
   if (from && ortho){
     var horiz = Math.abs(p.x - from.x) >= Math.abs(p.y - from.y);
@@ -799,15 +863,65 @@ function snapPoint(p, from){
       var d = horiz ? Math.abs(q.x - x) : Math.abs(q.y - y);
       if (d < bd){ bd = d; best = q; }
     });
-    if (best){ if (horiz) x = best.x; else y = best.y; }
+    if (best){
+      if (horiz) x = best.x; else y = best.y;
+      guides.push({ x1:best.x, y1:best.y, x2:snap(x), y2:snap(y) });
+    }
     return { x:snap(x), y:snap(y) };
   }
-  endpoints().forEach(function(q){                 // free: the nearest corner, any direction
+  endpoints().forEach(function(q){                 // a corner within reach beats everything
     var d = Math.sqrt((q.x-p.x)*(q.x-p.x) + (q.y-p.y)*(q.y-p.y));
     if (d < bd){ bd = d; best = q; }
   });
   if (best) return { x:snap(best.x), y:snap(best.y) };
-  return { x:snap(p.x), y:snap(p.y) };
+
+  // no corner near: line it up with one anyway, up or down, left or right
+  var gx = null, gy = null, bx = near, by = near;
+  endpoints().forEach(function(q){
+    var dx = Math.abs(q.x - p.x), dy = Math.abs(q.y - p.y);
+    if (dx < bx){ bx = dx; gx = q; }
+    if (dy < by){ by = dy; gy = q; }
+  });
+  var X = gx ? gx.x : p.x, Y = gy ? gy.y : p.y;
+  if (gx) guides.push({ x1:gx.x, y1:gx.y, x2:snap(X), y2:snap(Y) });
+  if (gy) guides.push({ x1:gy.x, y1:gy.y, x2:snap(X), y2:snap(Y) });
+  return { x:snap(X), y:snap(Y) };
+}
+
+/* THE ENDS OF THE CHOSEN LINE, as something to take hold of. Stretching a wall that is
+   already there beats drawing it again: it keeps its thickness, its colour, its lock and
+   the doors already cut into it. */
+function gripAt(p){
+  var s = selLines();
+  if (s.length !== 1 || s[0].locked) return null;
+  var l = s[0], tol = px(13);
+  var d1 = Math.sqrt((l.x1-p.x)*(l.x1-p.x) + (l.y1-p.y)*(l.y1-p.y));
+  var d2 = Math.sqrt((l.x2-p.x)*(l.x2-p.x) + (l.y2-p.y)*(l.y2-p.y));
+  if (d1 > tol && d2 > tol) return null;
+  return { l:l, end:(d1 <= d2 ? 1 : 2), was:{ x1:l.x1, y1:l.y1, x2:l.x2, y2:l.y2 } };
+}
+function gripMove(g, m){
+  var l = g.l, anchor = g.end === 1 ? { x:l.x2, y:l.y2 } : { x:l.x1, y:l.y1 };
+  var q = snapPoint(m, anchor);
+  if (Math.sqrt((q.x-anchor.x)*(q.x-anchor.x) + (q.y-anchor.y)*(q.y-anchor.y)) < MINLEN) return false;
+  if (g.end === 1){
+    if (q.x === l.x1 && q.y === l.y1) return false;
+    l.x1 = q.x; l.y1 = q.y;
+  } else {
+    if (q.x === l.x2 && q.y === l.y2) return false;
+    l.x2 = q.x; l.y2 = q.y;
+  }
+  return true;
+}
+/* An opening is measured from the line's FIRST end. Drag that end and every door on the wall
+   is measured from somewhere else, so they are re-measured once, at the end of the drag -
+   and any that no longer fits is removed AND COUNTED. */
+function gripDone(g){
+  var l = g.l, w = g.was;
+  var L0 = Math.sqrt((w.x2-w.x1)*(w.x2-w.x1) + (w.y2-w.y1)*(w.y2-w.y1));
+  if (L0 < 1e-9) return 0;
+  var ux = (w.x2-w.x1)/L0, uy = (w.y2-w.y1)/L0;
+  return reflowOpenings(l, (l.x1 - w.x1)*ux + (l.y1 - w.y1)*uy);
 }
 
 /* -------------------------------------------------------------- the actions */
@@ -820,6 +934,7 @@ function addLine(a, b){
 function hit(p){
   var tol = px(13), best = null, bd = 1e9;
   lines().forEach(function(l){
+    if (!visible(l)) return;
     var pr = project(l, p.x, p.y);
     if (pr.t < -0.02 || pr.t > 1.02) return;
     var d = pr.d - (l.kind === "wall" ? l.t/2 : 0);
@@ -914,26 +1029,57 @@ function reflowOpenings(l, shift){
   return lost;
 }
 
-/* A box takes the lines that are WHOLLY inside it - both ends, not one. Half a wall caught by
-   the edge of a box is not a wall he meant to pick, and a bulk change applied to it would land
-   somewhere he was not looking. Picking up a whole room by dragging a box round it is the
-   thing he asked for, and that is what both-ends gives.
-   A locked line is not picked up at all: it is locked against being changed, and sweeping it
-   into a selection is how it would be changed without anyone choosing to. */
+/* THE BOX, BOTH WAYS ROUND - the rule every drafting program uses, and the one he already
+   has in his hands from AutoCAD:
+
+     dragged LEFT to RIGHT   only what is WHOLLY inside - both ends, not one
+     dragged RIGHT to LEFT   everything the box TOUCHES, however little of it is in there
+
+   Both are wanted and they are wanted at different moments. Picking up a whole room means
+   catching nothing of the room next door, so the box must stop at the ends. Picking up
+   every wall along one side of a plan means catching walls that run far out of the box, so
+   it must not. The direction of the drag is the only thing that can say which he meant, and
+   it costs no button and no mode.
+
+   A locked line is picked up by neither: it is locked against being changed, and sweeping
+   it into a selection is how it would be changed without anyone choosing to. */
 function inBox(l, b){
   var lo = { x:Math.min(b.x0, b.x1), y:Math.min(b.y0, b.y1) },
       hi = { x:Math.max(b.x0, b.x1), y:Math.max(b.y0, b.y1) };
   return l.x1 >= lo.x && l.x1 <= hi.x && l.y1 >= lo.y && l.y1 <= hi.y &&
          l.x2 >= lo.x && l.x2 <= hi.x && l.y2 >= lo.y && l.y2 <= hi.y;
 }
+function segCross(a, b){
+  var r1=a.x2-a.x1, r2=a.y2-a.y1, s1=b.x2-b.x1, s2=b.y2-b.y1;
+  var d = r1*s2 - r2*s1;
+  if (Math.abs(d) < 1e-9) return false;
+  var t = ((b.x1-a.x1)*s2 - (b.y1-a.y1)*s1) / d;
+  var u = ((b.x1-a.x1)*r2 - (b.y1-a.y1)*r1) / d;
+  return t >= -1e-9 && t <= 1+1e-9 && u >= -1e-9 && u <= 1+1e-9;
+}
+function touchesBox(l, b){
+  var lo = { x:Math.min(b.x0, b.x1), y:Math.min(b.y0, b.y1) },
+      hi = { x:Math.max(b.x0, b.x1), y:Math.max(b.y0, b.y1) };
+  function inside(x, y){ return x >= lo.x && x <= hi.x && y >= lo.y && y <= hi.y; }
+  if (inside(l.x1, l.y1) || inside(l.x2, l.y2)) return true;
+  var e = [ { x1:lo.x, y1:lo.y, x2:hi.x, y2:lo.y }, { x1:hi.x, y1:lo.y, x2:hi.x, y2:hi.y },
+            { x1:hi.x, y1:hi.y, x2:lo.x, y2:hi.y }, { x1:lo.x, y1:hi.y, x2:lo.x, y2:lo.y } ];
+  for (var i = 0; i < 4; i++) if (segCross(l, e[i])) return true;
+  return false;
+}
+function crossingBox(b){ return b.x1 < b.x0; }        // dragged right to left
 function selectIn(b){
-  var caught = lines().filter(function(l){ return !l.locked && inBox(l, b); });
+  var cross = crossingBox(b), test = cross ? touchesBox : inBox;
+  var pick = lines().filter(function(l){ return visible(l) && test(l, b); });
+  var caught = pick.filter(function(l){ return !l.locked; });
+  var locked = pick.length - caught.length;
   sel = caught.map(function(l){ return l.id; });
-  var locked = lines().filter(function(l){ return l.locked && inBox(l, b); }).length;
   showSheet();
-  if (!caught.length) flash(locked ? "Only locked lines in there." : "Nothing inside that box.");
-  else if (locked) flash(caught.length + " picked up. " + locked + " locked line" +
-                         (locked === 1 ? " was" : "s were") + " left alone.");
+  var how = cross ? "everything it touched" : "only what was wholly inside";
+  if (!caught.length) flash(locked ? "Only locked lines in there." : "Nothing in that box.");
+  else flash(caught.length + " picked up - the box took " + how +
+             (locked ? ". " + locked + " locked line" + (locked === 1 ? " was" : "s were") +
+                       " left alone." : "."));
 }
 
 var joinA = null;                 // the first line tapped with Join, waiting for its partner
@@ -978,6 +1124,7 @@ function addOpening(l, k, w, from){
 /* ------------------------------------------------------------------- pointer */
 var ptrs = {}, pan0 = null, pinch0 = null, down = null, moved = false, dragging = null;
 var dragLabel = null;
+var grip = null;              // an end of the chosen line, being dragged out or back
 var touched = false;   // has he zoomed or panned himself? until he has, a resize re-fits
 
 svg.addEventListener("pointerdown", function(e){
@@ -999,7 +1146,22 @@ svg.addEventListener("pointerdown", function(e){
      instead of to that corner is how a line begun on an existing corner came out slanted
      with the 90 degree lock on - and the preview, squared the same wrong way, agreed with
      it all the way to the release. */
-  if (mode === "draw") down.s = snapPoint(down.m, null);
+  /* ONE MODE FOR DRAWING AND FOR PICKING UP. He asked for it plainly: hold the button down
+     and drag and a wall goes in; click on a wall that is already there and it is picked up.
+     Two buttons to swap between those was two buttons too many, and swapping them is not
+     work - it is the absence of work, done over and over. */
+  if (mode === "draw"){
+    down.s = snapPoint(down.m, null);
+    if (!chain){
+      var g0 = gripAt(down.m);                       // an end of the chosen wall: stretch it
+      if (g0){ g0.snap = snapshot(); grip = g0; return; }
+      var hd = hit(down.m);                          // already chosen: drag the lot
+      if (hd && isSel(hd.line.id)){
+        var mv = selLines().filter(function(l){ return !l.locked; });
+        if (mv.length){ dragging = { set:mv, from:down.m }; return; }
+      }
+    }
+  }
   if (mode === "pan"){ pan0 = { x:view.x, y:view.y }; return; }
   if (mode === "name"){ dragLabel = labelAt(down.m); return; }
   if (mode === "select"){
@@ -1062,6 +1224,14 @@ svg.addEventListener("pointermove", function(e){
     }
     return;
   }
+  if (grip){
+    // the snapshot was taken BEFORE the first step, so the first undo really does undo it
+    if (gripMove(grip, m)){
+      if (!grip.pushed){ pushState(grip.snap); grip.pushed = true; }
+      draw();
+    }
+    return;
+  }
   if (marquee){ marquee.x1 = m.x; marquee.y1 = m.y; draw(); return; }
   if (mode === "draw"){
     var from = chain || (moved ? down.s : null);
@@ -1074,6 +1244,17 @@ svg.addEventListener("pointerup", function(e){
   if (Object.keys(ptrs).length < 2) pinch0 = null;
   if (!down) return;
   var m = toModel(e.clientX, e.clientY), d = down; down = null; pan0 = null;
+  if (grip){
+    var g = grip; grip = null;
+    if (g.pushed){
+      var lost = gripDone(g);
+      save(); draw();
+      flash(lost ? lost + " opening" + (lost === 1 ? "" : "s") + " no longer fitted and " +
+                   (lost === 1 ? "was" : "were") + " removed."
+                 : "That wall is now " + fmt(len(g.l)) + ".");
+    } else draw();
+    return;
+  }
   if (dragging){ dragging = null; save(); draw(); return; }
   if (dragLabel){
     var dl = dragLabel; dragLabel = null; delete dl.pushed;
@@ -1111,6 +1292,11 @@ svg.addEventListener("pointerup", function(e){
       var q = snapPoint(m, s);                  // square to THAT, not to his finger
       addLine(s, q); ghost = null; draw(); return;
     }
+    if (!chain){
+      var hp = hit(m);                 // a wall under the tap: that is what he meant
+      if (hp){ sel = [hp.line.id]; justDrawn = null; showSheet(); draw(); return; }
+      sel = []; closeSheet();          // bare paper: let go of whatever was chosen
+    }
     var p = snapPoint(m, chain);
     if (!chain){ chain = p; ghost = null; showLen(true); draw(); return; }
     if (Math.hypot(p.x-chain.x, p.y-chain.y) < MINLEN){   // tapped the same spot: end the chain
@@ -1120,7 +1306,53 @@ svg.addEventListener("pointerup", function(e){
     chain = p; ghost = null; draw();
   }
 });
-svg.addEventListener("pointercancel", function(e){ delete ptrs[e.pointerId]; down = null; pinch0 = null; });
+svg.addEventListener("pointercancel", function(e){
+  delete ptrs[e.pointerId]; down = null; pinch0 = null; grip = null; dragLabel = null;
+});
+
+/* THE KEYBOARD. He is at a desk with a mouse as often as on a phone, and Delete is the key
+   every drawing program deletes with. Having to find a button in a panel for it - the panel
+   that was covering the drawing - is the slowest way to do the commonest thing. */
+window.addEventListener("keydown", function(e){
+  var t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  if (!PROJ) return;
+
+  if (e.key === "Escape"){
+    chain = null; ghost = null; joinA = null; marquee = null; grip = null;
+    sel = []; selLabel = null; justDrawn = null;
+    closeSheet(); showLen(false); draw();
+    return;
+  }
+  if ((e.key === "z" || e.key === "Z") && (e.ctrlKey || e.metaKey)){ e.preventDefault(); undo(); return; }
+
+  if (e.key === "Delete" || e.key === "Backspace"){
+    var chosen = selLines(), free = chosen.filter(function(l){ return !l.locked; });
+    var locked = chosen.length - free.length;
+    if (free.length){
+      e.preventDefault();
+      push();
+      var gone = {};
+      free.forEach(function(l){ gone[l.id] = 1; });
+      PROJ.ops   = ops().filter(function(o){ return !gone[o.line]; });
+      PROJ.lines = lines().filter(function(l){ return !gone[l.id]; });
+      sel = []; justDrawn = null; closeSheet(); save(); draw();
+      flash((free.length === 1 ? "Line deleted." : free.length + " lines deleted.") +
+            (locked ? " " + locked + " locked line" + (locked === 1 ? " was" : "s were") +
+                      " left alone." : ""));
+      return;
+    }
+    if (locked){ e.preventDefault(); flash("That line is locked. Unlock it first."); return; }
+    var t2 = selLabel ? labels().filter(function(q){ return q.id === selLabel; })[0] : null;
+    if (t2){
+      e.preventDefault();
+      push();
+      PROJ.labels = labels().filter(function(q){ return q.id !== t2.id; });
+      selLabel = null; closeSheet(); save(); draw();
+      flash("Name deleted.");
+    }
+  }
+});
 
 /* ---------------------------------------------------------- typed length entry */
 var lenBox = document.getElementById("len"), lenv = document.getElementById("lenv");
@@ -1152,14 +1384,16 @@ function paintHint(){
   if (!PROJ){ h.textContent = ""; return; }
   h.textContent = mode === "draw"
       ? (chain ? "Tap the next corner — or type a size and an arrow. Tap the same spot to stop."
-               : "Tap to start a line, or drag one out. Two fingers to zoom.")
+         : sel.length === 1
+           ? "Drag an end to stretch it, or drag the wall to move it. Delete removes it."
+           : "Drag to draw a wall. Tap a wall to pick it up. Tap bare paper to start a chain.")
     : mode === "join" ? (joinA ? "Now tap the other line. The ends you tapped are the ends that stay."
                                : "Tap one line, then the other. Both run out to meet in a corner.")
     : mode === "trim" ? "Tap the piece to rub out. It stops at the lines that cross it."
     : mode === "name" ? "Tap inside a room to name it. Drag a name to move it, tap it to change it."
     : mode === "select" ? (sel.length > 1
         ? sel.length + " chosen. Drag any one to move them all."
-        : "Tap a line, or drag a box round several. Tap a chosen one again to drag it.")
+        : "Drag a box. Left to right takes what is wholly inside; right to left takes everything it touches.")
     : "Drag to move the sheet. Two fingers to zoom.";
 }
 
@@ -1451,6 +1685,76 @@ function openLabel(t){
   inp.focus();
 }
 
+/* REFERENCE LINES AS A GROUP. They are guides - drawn to set things out, and then in the
+   way. Hiding them, locking them so a stray tap cannot move them, and clearing them out when
+   they have done their job are three different things he may want, so all three are here
+   rather than one button guessing which he meant. */
+function openRefs(){
+  sheet.classList.add("on");
+  sheetKind = "refs";
+  sheet.innerHTML = "";
+  var refs = lines().filter(function(l){ return l.kind === "ref"; });
+  var lockedN = refs.filter(function(l){ return l.locked; }).length;
+  var h3 = document.createElement("h3");
+  h3.textContent = "Reference lines — " + (refs.length || "none");
+  sheet.appendChild(h3);
+
+  var r1 = document.createElement("div"); r1.className = "row";
+  var hide = document.createElement("button");
+  hide.textContent = PROJ.refHidden ? "Show them" : "Hide them";
+  hide.setAttribute("aria-pressed", PROJ.refHidden ? "true" : "false");
+  hide.disabled = !refs.length;
+  hide.addEventListener("click", function(){
+    PROJ.refHidden = !PROJ.refHidden;
+    // a line he cannot see must not stay chosen: the next bulk change would land on it
+    sel = selLines().filter(visible).map(function(l){ return l.id; });
+    save(); openRefs(); draw();
+  });
+  r1.appendChild(hide);
+
+  var lock = document.createElement("button");
+  lock.textContent = (lockedN === refs.length && refs.length) ? "Unlock all" : "Lock all";
+  lock.disabled = !refs.length;
+  lock.addEventListener("click", function(){
+    var toLock = !(lockedN === refs.length && refs.length);
+    push();
+    refs.forEach(function(l){ l.locked = toLock; });
+    sel = []; save(); openRefs(); draw();
+    flash(toLock ? refs.length + " reference line" + (refs.length === 1 ? "" : "s") + " locked."
+                 : "Reference lines unlocked.");
+  });
+  r1.appendChild(lock);
+  sheet.appendChild(r1);
+
+  var r2 = document.createElement("div"); r2.className = "row";
+  var del = document.createElement("button");
+  del.textContent = "Delete them all";
+  del.disabled = !refs.length;
+  del.addEventListener("click", function(){
+    if (!confirm("Delete all " + refs.length + " reference line" +
+                 (refs.length === 1 ? "" : "s") + "? This cannot be undone from another device."))
+      return;
+    push();
+    var gone = {};
+    refs.forEach(function(l){ gone[l.id] = 1; });
+    PROJ.ops   = ops().filter(function(o){ return !gone[o.line]; });
+    PROJ.lines = lines().filter(function(l){ return !gone[l.id]; });
+    sel = []; PROJ.refHidden = false;
+    save(); openRefs(); draw();
+    flash(refs.length + " reference line" + (refs.length === 1 ? "" : "s") + " deleted.");
+  });
+  var cl = document.createElement("button"); cl.className = "ghost"; cl.textContent = "Close";
+  cl.addEventListener("click", function(){ closeSheet(); draw(); });
+  r2.appendChild(del); r2.appendChild(cl);
+  sheet.appendChild(r2);
+
+  var note = document.createElement("div"); note.className = "note";
+  note.textContent = refs.length
+    ? "Hidden, they are not drawn and cannot be tapped, caught by a box or snapped to — but they are still in the drawing."
+    : "A reference line is drawn with the Ref button on the New line row. It is a guide: it carries no thickness and closes no room.";
+  sheet.appendChild(note);
+}
+
 function openProjects(){
   sheet.classList.add("on");
   sheetKind = "projects";
@@ -1579,6 +1883,7 @@ document.getElementById("ortho").addEventListener("click", function(){
   draw();
 });
 document.getElementById("fit").addEventListener("click", fit);
+document.getElementById("refbtn").addEventListener("click", openRefs);
 document.getElementById("undo").addEventListener("click", undo);
 document.getElementById("menu").addEventListener("click", openProjects);
 window.addEventListener("resize", function(){
