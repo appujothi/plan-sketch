@@ -91,14 +91,27 @@ svg{ width:100%; height:100%; display:block; touch-action:none; }
    covered the very thing he had just selected. */
 #sheet{ position:absolute; left:0; right:0; bottom:0; background:var(--sheet); border-top:1px solid var(--line);
         padding:12px 14px 16px; display:none; box-shadow:0 -8px 24px rgba(0,0,0,.14);
-        max-height:52%; overflow-y:auto; }
-#sheet.on{ display:block; }
+        max-height:52%; }
+#sheet.on{ display:flex; flex-direction:column; }
+#sheetbody{ overflow-y:auto; min-height:0; flex:1 1 auto; }
 @media (min-width:760px){
   #sheet{ left:auto; right:0; top:0; bottom:0; width:330px; max-height:none;
           border-top:none; border-left:1px solid var(--line);
           box-shadow:-8px 0 24px rgba(0,0,0,.12); }
 }
 #sheet h3{ margin:0 0 8px; font-size:14px; font-weight:650; }
+/* THE FOURTH TIME, and the first attempt at it was wrong in the same way. Capping the sheet
+   at half the height stopped it covering the drawing and put Lock, Delete and Close 48 px
+   below the fold of a phone - a scroll with no scrollbar on it is the invisible control
+   again, in a new place. Making that row STICKY only looked like a fix: a sticky row sits
+   over the row above it, so the Window button went under it and was hidden with nothing to
+   say so. Measured, not eyeballed - Window at y 758, the stuck row at y 759.
+   The row is therefore OUTSIDE the scrolling part altogether: the sheet is a column, the
+   body scrolls, the foot does not. A layout that cannot hide a control beats a layout
+   arranged so that it currently does not. */
+#sheet .foot{ flex:0 0 auto; background:var(--sheet);
+              margin:8px -14px -16px; padding:10px 14px 16px;
+              border-top:1px solid var(--line); margin-bottom:-16px; }
 .row{ display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-bottom:8px; }
 input[type=text]{ font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line);
                   border-radius:9px; padding:8px 10px; width:7.5em; }
@@ -1372,6 +1385,21 @@ Array.prototype.forEach.call(lenBox.querySelectorAll("button"), function(b){
 
 /* ------------------------------------------------------------------ the sheets */
 var sheet = document.getElementById("sheet");
+/* Called at the end of every sheet: everything built goes into a scrolling body, and the one
+   row marked `foot` is lifted out of it to sit below, always on the screen. Doing it here
+   rather than in each builder means a sheet added later cannot forget. */
+function sheetDone(){
+  var foot = sheet.querySelector(".foot");
+  var body = document.createElement("div");
+  body.id = "sheetbody";
+  while (sheet.firstChild){
+    var c = sheet.firstChild;
+    sheet.removeChild(c);
+    if (c !== foot) body.appendChild(c);
+  }
+  sheet.appendChild(body);
+  if (foot) sheet.appendChild(foot);
+}
 function closeSheet(){ sheet.classList.remove("on"); sheet.innerHTML = ""; sheetKind = null; }
 function flash(msg){
   var h = document.getElementById("hint");
@@ -1477,11 +1505,12 @@ function openMany(s){
   var cl2 = document.createElement("button"); cl2.className = "ghost"; cl2.textContent = "Close";
   cl2.addEventListener("click", function(){ sel = []; closeSheet(); draw(); });
   r7.appendChild(lk); r7.appendChild(del); r7.appendChild(cl2);
-  sheet.appendChild(r7);
-
   var n = document.createElement("div"); n.className = "note";
   n.textContent = "Drag any one of them to move them all together.";
   sheet.appendChild(n);
+  r7.className = "row foot";
+  sheet.appendChild(r7);
+  sheetDone();
 }
 
 function openLine(l){
@@ -1555,8 +1584,12 @@ function openLine(l){
   // door / window
   if (l.kind === "wall"){
     var r5 = document.createElement("div"); r5.className = "row";
-    var dw = document.createElement("input"); dw.type = "text"; dw.placeholder = "size  3-0";
-    var df = document.createElement("input"); df.type = "text"; df.placeholder = "from end  2-0";
+    // narrow enough that Door and Window stay on this row: a wrapped row is 45 px of a
+    // sheet that is already held to half a phone, and it pushed the rest below the fold
+    var dw = document.createElement("input"); dw.type = "text"; dw.placeholder = "size 3-0";
+    dw.style.width = "4.8em";
+    var df = document.createElement("input"); df.type = "text"; df.placeholder = "from end 2-0";
+    df.style.width = "6.8em";
     var bd = document.createElement("button"); bd.textContent = "Door";
     var bw = document.createElement("button"); bw.textContent = "Window";
     var e2 = document.createElement("span"); e2.className = "err";
@@ -1607,7 +1640,9 @@ function openLine(l){
   var cl2 = document.createElement("button"); cl2.className = "ghost"; cl2.textContent = "Close";
   cl2.addEventListener("click", function(){ sel = []; closeSheet(); draw(); });
   r7.appendChild(lk); r7.appendChild(del); r7.appendChild(cl2);
+  r7.className = "row foot";
   sheet.appendChild(r7);
+  sheetDone();
 }
 
 /* ---------------------------------------------------------------- the options bar */
@@ -1681,7 +1716,9 @@ function openLabel(t){
   var cl = document.createElement("button"); cl.className = "ghost"; cl.textContent = "Close";
   cl.addEventListener("click", function(){ selLabel = null; closeSheet(); draw(); });
   r2.appendChild(del); r2.appendChild(cl);
+  r2.className = "row foot";
   sheet.appendChild(r2);
+  sheetDone();
   inp.focus();
 }
 
@@ -1745,14 +1782,15 @@ function openRefs(){
   });
   var cl = document.createElement("button"); cl.className = "ghost"; cl.textContent = "Close";
   cl.addEventListener("click", function(){ closeSheet(); draw(); });
-  r2.appendChild(del); r2.appendChild(cl);
-  sheet.appendChild(r2);
-
   var note = document.createElement("div"); note.className = "note";
   note.textContent = refs.length
     ? "Hidden, they are not drawn and cannot be tapped, caught by a box or snapped to — but they are still in the drawing."
     : "A reference line is drawn with the Ref button on the New line row. It is a guide: it carries no thickness and closes no room.";
   sheet.appendChild(note);
+  r2.appendChild(del); r2.appendChild(cl);
+  r2.className = "row foot";
+  sheet.appendChild(r2);
+  sheetDone();
 }
 
 function openProjects(){
@@ -1840,11 +1878,14 @@ function openProjects(){
     var st = store(); st.list.push(p); st.open = p.id; writeStore(st);
     open(p.id);
   });
-  r2.appendChild(nm); r2.appendChild(w); r2.appendChild(h); r2.appendChild(mk); r2.appendChild(er);
-  sheet.appendChild(r2);
   var n = document.createElement("div"); n.className = "note";
   n.textContent = "Sizes in feet-inches: 40, or 33-6. The plot is the dotted outline; lines may be drawn anywhere.";
   sheet.appendChild(n);
+  // with a dozen projects listed, the row that makes a new one would be off the bottom
+  r2.appendChild(nm); r2.appendChild(w); r2.appendChild(h); r2.appendChild(mk); r2.appendChild(er);
+  r2.className = "row foot";
+  sheet.appendChild(r2);
+  sheetDone();
 }
 
 function open(id){
