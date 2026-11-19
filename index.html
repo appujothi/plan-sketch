@@ -255,7 +255,11 @@ function trimAt(l, t0, all){
 /* ---------------------------------------------------------------- the state */
 var PROJ = null;                     // the open project
 var mode = "draw", thick = 4.5, kind = "wall", color = COLORS[0], ortho = true;
-var chain = null, ghost = null, sel = null, undoStack = [];
+var chain = null, ghost = null, sel = [], undoStack = [], marquee = null;
+/* The selection is a LIST. One line and several are the same thing with a different length,
+   which is the only way the bulk actions and the single-line sheet can stay one code path. */
+function isSel(id){ return sel.indexOf(id) >= 0; }
+function selLines(){ return lines().filter(function(l){ return isSel(l.id); }); }
 var view = { x:0, y:0, w:100, h:100 };
 var db = null, saveTimer = 0;
 var INVENTED = null;      // the empty project made for a first visit, droppable if the store has real ones
@@ -275,7 +279,7 @@ function push(){
 function undo(){
   if (!undoStack.length) return;
   var s = JSON.parse(undoStack.pop());
-  PROJ.lines = s.lines; PROJ.ops = s.ops; sel = null; chain = null; ghost = null;
+  PROJ.lines = s.lines; PROJ.ops = s.ops; sel = []; chain = null; ghost = null;
   document.getElementById("undo").disabled = !undoStack.length;
   closeSheet(); draw(); save();
 }
@@ -473,21 +477,30 @@ function draw(){
       opacity:"0.4", "stroke-linecap":"butt" }));
   }
 
-  // the selected line, lit up with its size on it
-  if (sel){
-    var l = byId(sel);
-    if (l){
-      svg.appendChild(el("line", { x1:l.x1, y1:l.y1, x2:l.x2, y2:l.y2,
-        stroke:cs.getPropertyValue("--sel").trim(), "stroke-width":Math.max(l.kind==="wall"?l.t:0, px(3)) + px(3),
-        opacity:"0.35", "stroke-linecap":"butt" }));
-      var m2 = at(l, 0.5), L2 = len(l);
-      var ux2 = (l.x2-l.x1)/L2, uy2 = (l.y2-l.y1)/L2;
-      var t2 = el("text", { x:m2.x - uy2*0, y:m2.y, "font-size":fs*1.05,
-        fill:cs.getPropertyValue("--sel").trim(), "text-anchor":"middle", "dominant-baseline":"middle",
-        transform:"rotate(" + (Math.atan2(uy2, ux2)*180/Math.PI) + " " + m2.x + " " + m2.y + ")" });
-      t2.textContent = fmt(L2);
-      svg.appendChild(t2);
-    }
+  // every selected line, lit up. The size is written on it only when ONE is chosen: with a
+  // dozen selected the figures overlap each other into a smear and say less than nothing.
+  var selNow = selLines(), one = selNow.length === 1;
+  selNow.forEach(function(l){
+    svg.appendChild(el("line", { x1:l.x1, y1:l.y1, x2:l.x2, y2:l.y2,
+      stroke:cs.getPropertyValue("--sel").trim(), "stroke-width":Math.max(l.kind==="wall"?l.t:0, px(3)) + px(3),
+      opacity:"0.35", "stroke-linecap":"butt" }));
+    if (!one) return;
+    var m2 = at(l, 0.5), L2 = len(l);
+    var ux2 = (l.x2-l.x1)/L2, uy2 = (l.y2-l.y1)/L2;
+    var t2 = el("text", { x:m2.x, y:m2.y, "font-size":fs*1.05,
+      fill:cs.getPropertyValue("--sel").trim(), "text-anchor":"middle", "dominant-baseline":"middle",
+      transform:"rotate(" + (Math.atan2(uy2, ux2)*180/Math.PI) + " " + m2.x + " " + m2.y + ")" });
+    t2.textContent = fmt(L2);
+    svg.appendChild(t2);
+  });
+
+  // the box being dragged round them
+  if (marquee){
+    svg.appendChild(el("rect", { x:Math.min(marquee.x0, marquee.x1), y:Math.min(marquee.y0, marquee.y1),
+      width:Math.abs(marquee.x1-marquee.x0), height:Math.abs(marquee.y1-marquee.y0),
+      fill:cs.getPropertyValue("--sel").trim(), "fill-opacity":"0.08",
+      stroke:cs.getPropertyValue("--sel").trim(), "stroke-width":px(1.5),
+      "stroke-dasharray":px(6)+" "+px(4) }));
   }
 
   // what is being drawn right now
@@ -592,7 +605,7 @@ function doTrim(p){
   PROJ.ops = keep;
   lines().splice(i, 1);
   made.forEach(function(m){ lines().push(m); });
-  sel = null; closeSheet(); save(); draw();
+  sel = []; closeSheet(); save(); draw();
 }
 /* JOIN (a fillet of no radius). Two lines at any angle, each tapped once: both run out to
    where they meet, or back to it, and the corner closes exactly. The END THAT GOES is the one
@@ -643,6 +656,28 @@ function reflowOpenings(l, shift){
   return lost;
 }
 
+/* A box takes the lines that are WHOLLY inside it - both ends, not one. Half a wall caught by
+   the edge of a box is not a wall he meant to pick, and a bulk change applied to it would land
+   somewhere he was not looking. Picking up a whole room by dragging a box round it is the
+   thing he asked for, and that is what both-ends gives.
+   A locked line is not picked up at all: it is locked against being changed, and sweeping it
+   into a selection is how it would be changed without anyone choosing to. */
+function inBox(l, b){
+  var lo = { x:Math.min(b.x0, b.x1), y:Math.min(b.y0, b.y1) },
+      hi = { x:Math.max(b.x0, b.x1), y:Math.max(b.y0, b.y1) };
+  return l.x1 >= lo.x && l.x1 <= hi.x && l.y1 >= lo.y && l.y1 <= hi.y &&
+         l.x2 >= lo.x && l.x2 <= hi.x && l.y2 >= lo.y && l.y2 <= hi.y;
+}
+function selectIn(b){
+  var caught = lines().filter(function(l){ return !l.locked && inBox(l, b); });
+  sel = caught.map(function(l){ return l.id; });
+  var locked = lines().filter(function(l){ return l.locked && inBox(l, b); }).length;
+  showSheet();
+  if (!caught.length) flash(locked ? "Only locked lines in there." : "Nothing inside that box.");
+  else if (locked) flash(caught.length + " picked up. " + locked + " locked line" +
+                         (locked === 1 ? " was" : "s were") + " left alone.");
+}
+
 var joinA = null;                 // the first line tapped with Join, waiting for its partner
 function doJoin(p){
   var h = hit(p);
@@ -651,14 +686,14 @@ function doJoin(p){
   var msg = joinLines(joinA.line, joinA.t, h.line, h.t);
   joinA = null;
   if (msg) flash(msg);
-  sel = null; closeSheet(); draw();
+  sel = []; closeSheet(); draw();
 }
 
 function removeLine(l){
   push();
   PROJ.ops = ops().filter(function(o){ return o.line !== l.id; });
   lines().splice(lines().indexOf(l), 1);
-  sel = null; closeSheet(); save(); draw();
+  sel = []; closeSheet(); save(); draw();
 }
 // type a length: the far end moves along the line it already has
 function setLength(l, L){
@@ -709,7 +744,13 @@ svg.addEventListener("pointerdown", function(e){
   if (mode === "pan"){ pan0 = { x:view.x, y:view.y }; return; }
   if (mode === "select"){
     var h = hit(down.m);
-    if (h && !h.line.locked && sel === h.line.id) dragging = { line:h.line, from:down.m };
+    // On something already chosen: drag the WHOLE selection. On bare paper: start a box.
+    if (h && isSel(h.line.id)){
+      var movable = selLines().filter(function(l){ return !l.locked; });
+      if (movable.length) dragging = { set:movable, from:down.m };
+    } else if (!h){
+      marquee = { x0:down.m.x, y0:down.m.y, x1:down.m.x, y1:down.m.y };
+    }
   }
 });
 
@@ -741,9 +782,18 @@ svg.addEventListener("pointermove", function(e){
     draw(); return;
   }
   if (dragging){
-    moveLine(dragging.line, m.x - dragging.from.x, m.y - dragging.from.y);
-    dragging.from = m; draw(); return;
+    /* Every line in the set moves by the SAME snapped step. Snapping each line's own ends
+       instead would let them drift apart by a half inch each, and a room dragged across the
+       sheet would come back a different room. */
+    var dx = snap(m.x - dragging.from.x), dy = snap(m.y - dragging.from.y);
+    if (dx || dy){
+      dragging.set.forEach(function(l){ moveLine(l, dx, dy); });
+      dragging.from = { x:dragging.from.x + dx, y:dragging.from.y + dy };
+      draw();
+    }
+    return;
   }
+  if (marquee){ marquee.x1 = m.x; marquee.y1 = m.y; draw(); return; }
   if (mode === "draw"){
     var from = chain || (moved ? down.s : null);
     if (from){ var q = snapPoint(m, from); ghost = { x1:from.x, y1:from.y, x2:q.x, y2:q.y }; draw(); }
@@ -762,10 +812,16 @@ svg.addEventListener("pointerup", function(e){
 
   if (mode === "join"){ doJoin(m); return; }
 
+  if (marquee){
+    var box = marquee; marquee = null;
+    if (moved) selectIn(box); else { sel = []; closeSheet(); }
+    draw(); return;
+  }
+
   if (mode === "select"){
     var h = hit(m);
-    sel = h ? h.line.id : null;
-    if (sel) openLine(byId(sel)); else closeSheet();
+    sel = h ? [h.line.id] : [];
+    showSheet();
     draw(); return;
   }
 
@@ -820,8 +876,97 @@ function paintHint(){
     : mode === "join" ? (joinA ? "Now tap the other line. The ends you tapped are the ends that stay."
                                : "Tap one line, then the other. Both run out to meet in a corner.")
     : mode === "trim" ? "Tap the piece to rub out. It stops at the lines that cross it."
-    : mode === "select" ? "Tap a line. Tap it again and drag to move it."
+    : mode === "select" ? (sel.length > 1
+        ? sel.length + " chosen. Drag any one to move them all."
+        : "Tap a line, or drag a box round several. Tap a chosen one again to drag it.")
     : "Drag to move the sheet. Two fingers to zoom.";
+}
+
+function showSheet(){
+  var s = selLines();
+  if (!s.length) closeSheet();
+  else if (s.length === 1) openLine(s[0]);
+  else openMany(s);
+}
+
+/* Several lines at once. Only the things that mean the same for all of them are offered:
+   a thickness, a kind, a colour, a lock, a delete. NOT a length - "set them all to 10'-0"" is
+   almost never what anyone means, and it would quietly destroy a room. */
+function openMany(s){
+  sheet.classList.add("on");
+  sheetKind = "many";
+  sheet.innerHTML = "";
+  var walls = s.filter(function(l){ return l.kind === "wall"; });
+  var total = s.reduce(function(t, l){ return t + len(l); }, 0);
+  var h3 = document.createElement("h3");
+  h3.textContent = s.length + " lines chosen  —  " + walls.length + " wall" +
+                   (walls.length === 1 ? "" : "s") + ", " + fmt(total) + " altogether";
+  sheet.appendChild(h3);
+
+  function bulk(fn){ push(); s.forEach(fn); save(); draw(); openMany(selLines()); }
+
+  var r2 = document.createElement("div"); r2.className = "row";
+  [["wall","All wall lines"],["ref","All reference lines"]].forEach(function(k){
+    var b = document.createElement("button");
+    b.textContent = k[1];
+    b.setAttribute("aria-pressed", s.every(function(l){ return l.kind === k[0]; }) ? "true" : "false");
+    b.addEventListener("click", function(){ bulk(function(l){ l.kind = k[0]; }); });
+    r2.appendChild(b);
+  });
+  sheet.appendChild(r2);
+
+  if (walls.length){
+    var r3 = document.createElement("div"); r3.className = "row";
+    var lb = document.createElement("span"); lb.className = "note";
+    lb.textContent = "Thickness of the " + walls.length + " wall" + (walls.length === 1 ? "" : "s");
+    r3.appendChild(lb);
+    THICK.forEach(function(t){
+      var b = document.createElement("button");
+      b.textContent = inchText(t);
+      b.setAttribute("aria-pressed", walls.every(function(l){ return l.t === t; }) ? "true" : "false");
+      b.addEventListener("click", function(){
+        bulk(function(l){ if (l.kind === "wall") l.t = t; });
+      });
+      r3.appendChild(b);
+    });
+    sheet.appendChild(r3);
+  }
+
+  var r4 = document.createElement("div"); r4.className = "row";
+  var cl = document.createElement("span"); cl.className = "note"; cl.textContent = "Colour"; r4.appendChild(cl);
+  COLORS.forEach(function(c){
+    var b = document.createElement("button");
+    b.className = "sw"; b.style.background = c; b.setAttribute("aria-label", c);
+    b.setAttribute("aria-pressed", s.every(function(l){ return l.color === c; }) ? "true" : "false");
+    b.addEventListener("click", function(){ bulk(function(l){ l.color = c; }); });
+    r4.appendChild(b);
+  });
+  sheet.appendChild(r4);
+
+  var r7 = document.createElement("div"); r7.className = "row";
+  var lk = document.createElement("button");
+  lk.textContent = "Lock all";
+  lk.addEventListener("click", function(){
+    push(); s.forEach(function(l){ l.locked = true; }); sel = []; save(); closeSheet(); draw();
+    flash(s.length + " lines locked.");
+  });
+  var del = document.createElement("button");
+  del.textContent = "Delete all " + s.length;
+  del.addEventListener("click", function(){
+    push();
+    var ids = s.map(function(l){ return l.id; });
+    PROJ.ops = ops().filter(function(o){ return ids.indexOf(o.line) < 0; });
+    PROJ.lines = lines().filter(function(l){ return ids.indexOf(l.id) < 0; });
+    sel = []; save(); closeSheet(); draw();
+  });
+  var cl2 = document.createElement("button"); cl2.className = "ghost"; cl2.textContent = "Close";
+  cl2.addEventListener("click", function(){ sel = []; closeSheet(); draw(); });
+  r7.appendChild(lk); r7.appendChild(del); r7.appendChild(cl2);
+  sheet.appendChild(r7);
+
+  var n = document.createElement("div"); n.className = "note";
+  n.textContent = "Drag any one of them to move them all together.";
+  sheet.appendChild(n);
 }
 
 function openLine(l){
@@ -945,7 +1090,7 @@ function openLine(l){
     removeLine(l);
   });
   var cl2 = document.createElement("button"); cl2.className = "ghost"; cl2.textContent = "Close";
-  cl2.addEventListener("click", function(){ sel = null; closeSheet(); draw(); });
+  cl2.addEventListener("click", function(){ sel = []; closeSheet(); draw(); });
   r7.appendChild(lk); r7.appendChild(del); r7.appendChild(cl2);
   sheet.appendChild(r7);
 }
@@ -1034,7 +1179,7 @@ function open(id){
   if (!p) return;
   PROJ = p; PROJ.ops = PROJ.ops || []; PROJ.lines = PROJ.lines || []; PROJ.seq = PROJ.seq || 1;
   s.open = id; writeStore(s);
-  sel = null; chain = null; ghost = null; undoStack = [];
+  sel = []; chain = null; ghost = null; undoStack = [];
   document.getElementById("undo").disabled = true;
   document.getElementById("pname").textContent = PROJ.name;
   document.getElementById("psize").textContent = fmt(PROJ.W) + " × " + fmt(PROJ.H);
@@ -1049,7 +1194,7 @@ Array.prototype.forEach.call(document.querySelectorAll("#modes button[data-mode]
       o.setAttribute("aria-pressed", o === b ? "true" : "false");
     });
     chain = null; ghost = null; joinA = null; showLen(false);
-    if (mode !== "select"){ sel = null; closeSheet(); }
+    if (mode !== "select"){ sel = []; closeSheet(); }
     draw();
   });
 });
